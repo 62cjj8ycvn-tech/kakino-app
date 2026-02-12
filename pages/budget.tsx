@@ -366,6 +366,9 @@ let nextSub = { ...prevSub };
 for (const { key, value } of resolved) {
 const parts = key.split("::");
 const kind = parts[0];
+const k = parts[1];
+if (!k) continue; // or return prev; / 何もせず次へ
+nextIncome[k] = value;
 
 if (kind === "income") {
 const k = parts[1];
