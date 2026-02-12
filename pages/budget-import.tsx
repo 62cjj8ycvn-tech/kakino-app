@@ -41,6 +41,7 @@ return (s ?? "")
 .trim();
 }
 type Category = (typeof CATEGORIES)[number];
+const SUBCATEGORIES_MAP = SUBCATEGORIES as Record<string, readonly string[]>;
 
 function isCategory(x: string): x is Category {
 return (CATEGORIES as readonly string[]).includes(x);
@@ -157,7 +158,7 @@ const cat = cleanCell(catRaw);
 return cat;
 }
 
-function normalizeSubCategory(cat: string, subRaw: string) {
+function normalizeSubCategory(cat: Category, subRaw: string) {
 const sub = cleanCell(subRaw);
 
 // 空は「カテゴリ予算」
@@ -170,7 +171,7 @@ if (sub === "将哉" || sub === "未有") return sub;
 return "__INVALID_ENT_SUB__";
 }
 
-const official = (SUBCATEGORIES as any)?.[cat] as string[] | undefined;
+const official = SUBCATEGORIES_MAP[cat];
 if (!official || official.length === 0) {
 // マスタにないカテゴリはそのまま通す（ただし後段でカテゴリ検証される）
 return sub;
@@ -242,9 +243,13 @@ return { okRows: [] as RowOk[], errors: [{ lineNo: 1, messages: ["CSVが空で�
 // table が空 or 1行目が無いケースを先に弾く（TypeScript & 実行時の両方対策）
 const firstRow = table?.[0];
 if (!firstRow) {
-// ここは元の設計に合わせて：エラー表示したいなら throw / return などにしてOK
-throw new Error("CSVの内容が空です（ヘッダ行が見つかりません）");
+return {
+okRows: [] as RowOk[],
+errors: [{ lineNo: 1, messages: ["CSVの内容が空です（ヘッダ行が見つかりません）"] }],
+docsPreview: {} as Record<string, BudgetDoc>,
+};
 }
+
 
 const header = firstRow.map((h) => cleanCell(h).toLowerCase());
 const hasHeader =
@@ -263,7 +268,16 @@ const colReg = hasHeader ? idx("registrant") : 1;
 const colCat = hasHeader ? idx("category") : 2;
 const colSub = hasHeader ? idx("subcategory") : 3;
 const colBud = hasHeader ? idx("budget") : 4;
-
+if (hasHeader) {
+const cols = [colMonth, colReg, colCat, colSub, colBud];
+if (cols.some((n) => n < 0)) {
+return {
+okRows: [] as RowOk[],
+errors: [{ lineNo: 1, messages: ["ヘッダはあるけど列名が想定と違います（month/registrant/category/subCategory/budget を確認）"] }],
+docsPreview: {} as Record<string, BudgetDoc>,
+};
+}
+}
 const inRows: RowIn[] = [];
 for (let i = startIdx; i < table.length; i++) {
 const lineNo = i + 1; // 表示用（1始まり）
@@ -327,7 +341,7 @@ subCategory = normalizedSub; // "" or 正規化済み
 
 // 空じゃないときだけ “マスタ外→自由入力” になってるかを確認
 if (subCategory !== "") {
-const official = (SUBCATEGORIES as any)?.[category] as string[] | undefined;
+const official = SUBCATEGORIES_MAP[category];
 if (official && official.length > 0) {
 // normalizeSubCategory が自由入力に寄せるので、ここは基本OK
 // ただし official に自由入力が無いケースもあるので一応チェック
