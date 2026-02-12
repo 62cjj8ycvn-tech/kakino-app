@@ -218,7 +218,7 @@ byCat[sub] = r.budget;
 return docs;
 }
 
-function fmtYen(n: number) {
+function fmtYen(n: unknown) {
 const r = Math.round(Number(n) || 0);
 return `¥${r.toLocaleString("ja-JP")}`;
 }
@@ -561,7 +561,7 @@ OK行: {okRows.length} / エラー: {errors.length}
 {Object.keys(doc.categoryBudgets).length === 0
 ? "（なし）"
 : Object.entries(doc.categoryBudgets)
-.map(([k, v]) => `${k}:${fmtYen(v)}`)
+.map(([k, v]) => `${k}:${fmtYen(Number(v))}`)
 .join(", ")}
 </div>
 
