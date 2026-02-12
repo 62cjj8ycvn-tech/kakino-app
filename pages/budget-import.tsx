@@ -384,7 +384,8 @@ setBusy(true);
 setResultMsg("");
 
 try {
-const entries = Object.entries(docsPreview);
+const entries = Object.entries(docsPreview) as Array<[string, BudgetDoc]>;
+
 
 for (const [docId, docData] of entries) {
 const ref = doc(db, "budgets", docId);
