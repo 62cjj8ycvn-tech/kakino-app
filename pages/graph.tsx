@@ -7,22 +7,7 @@ import { CATEGORIES, SUBCATEGORIES } from "../lib/masterData";
 // ✅ 月キャッシュ追加（ここから）
 // =====================
 
-type ExpenseDoc = {
-registrant: string;
-date: string;
-month: string;
-amount: number;
-category: string;
-subCategory: string;
-source: string;
-};
 
-type IncomeDoc = {
-registrant: string;
-date: string;
-amount: number;
-source: string;
-};
 
 const expensesCacheByMonth = new Map<string, { rows: ExpenseDoc[]; cachedAt: number }>();
 const incomesCacheByRange = new Map<string, { rows: IncomeDoc[]; cachedAt: number }>();
@@ -299,6 +284,10 @@ const [scope, setScope] = useState<Scope>("total");
 const [rowsMonth, setRowsMonth] = useState<ExpenseDoc[]>([]);
 const [incomesMonth, setIncomesMonth] = useState<IncomeDoc[]>([]);
 const [loading, setLoading] = useState(true);
+// ====== 日付/期間に応じた対象month配列 ======
+const monthsActive = useMemo(() => {
+return rangeMode ? monthsBetween(rangeStart, rangeEnd) : [month];
+}, [rangeMode, rangeStart, rangeEnd, month]);
 const forceReload = () => {
 for (const ym of monthsActive) {
 expensesCacheByMonth.delete(ym);
@@ -320,11 +309,6 @@ const [lineMode, setLineMode] = useState<"daily" | "cumulative">("cumulative");
 // collapse categories
 const COLLAPSE_CATS = ["固定費", "積立", "振替"] as const;
 const [showCollapsedCats, setShowCollapsedCats] = useState(false);
-
-// ====== 日付/期間に応じた対象month配列 ======
-const monthsActive = useMemo(() => {
-return rangeMode ? monthsBetween(rangeStart, rangeEnd) : [month];
-}, [rangeMode, rangeStart, rangeEnd, month]);
 
 // ====== expenses + incomes load ======
 useEffect(() => {
@@ -360,17 +344,26 @@ missing.push(ym);
 }
 
 if (missing.length > 0) {
-const qExp = query(collection(db, "expenses"), where("month", "in", missing));
-const snap = await getDocs(qExp);
-
 for (const ym of missing) resultByMonth[ym] = [];
 
+for (const part of chunk(missing, 10)) {
+const qExp = query(collection(db, "expenses"), where("month", "in", part));
+const snap = await getDocs(qExp);
+
 snap.docs.forEach((d) => {
-const row = d.data() as ExpenseDoc;
-const ym = row.month;
-if (!resultByMonth[ym]) resultByMonth[ym] = [];
-resultByMonth[ym].push(row);
-});
+const raw = d.data() as any;
+const row: ExpenseDoc = {
+registrant: String(raw.registrant ?? ""),
+date: String(raw.date ?? ""),
+month: String(raw.month ?? ""),
+amount: Number(raw.amount ?? 0),
+category: String(raw.category ?? ""),
+subCategory: String(raw.subCategory ?? ""),
+source: String(raw.source ?? ""),
+};
+
+}
+
 
 const now = Date.now();
 for (const ym of missing) {
