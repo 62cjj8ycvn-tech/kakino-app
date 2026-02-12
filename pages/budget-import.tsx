@@ -197,9 +197,16 @@ docs[docId].categoryBudgets[r.category] = r.budget;
 continue;
 }
 
-// ✅ 内訳予算
-docs[docId].subBudgets[r.category] ??= {};
-docs[docId].subBudgets[r.category][r.subCategory] = r.budget;
+// ✅ 内訳予算（TypeScriptが undefined 判定で落ちない書き方）
+docs[docId].subBudgets ??= {};
+
+const cat = r.category;
+const sub = r.subCategory;
+
+// カテゴリ配下のオブジェクトを必ず初期化してから使う
+const byCat = (docs[docId].subBudgets[cat] ??= {});
+byCat[sub] = r.budget;
+
 }
 
 return docs;
