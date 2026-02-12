@@ -317,7 +317,7 @@ messages.push(`budgetがマイナス（${budget}）`);
 
 // subCategory（カテゴリが正しいときだけチェック）
 let subCategory = "";
-if (CATEGORIES.includes(category)) {
+if (isCategory(category)) {
 const normalizedSub = normalizeSubCategory(category, subRaw);
 
 if (normalizedSub === "__INVALID_ENT_SUB__") {
