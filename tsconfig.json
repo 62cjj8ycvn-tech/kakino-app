@@ -48,12 +48,9 @@
     "resolveJsonModule": true
   },
   "include": [
-    "next-env.d.ts",
-    "**/*.mts",
-    "**/*.ts",
-    "**/*.tsx"
+    "next-env.d.ts", "**/*.ts", "**/*.tsx"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules", "frontend"
   ]
 }
