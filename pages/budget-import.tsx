@@ -569,9 +569,9 @@ OK行: {okRows.length} / エラー: {errors.length}
 <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 800 }}>
 {Object.keys(doc.subBudgets).length === 0
 ? "（なし）"
-: Object.entries(doc.subBudgets)
+: Object.entries(doc.subBudgets as Record<string, Record<string, unknown>>)
 .map(([cat, subs]) => {
-const inner = Object.entries(subs)
+const inner = Object.entries(subs as Record<string, unknown>)
 .map(([s, v]) => `${s}:${fmtYen(v)}`)
 .join(" / ");
 return `${cat}(${inner})`;
