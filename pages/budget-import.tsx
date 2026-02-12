@@ -40,6 +40,11 @@ return (s ?? "")
 .replace(/\s+/g, " ") // 連続空白潰し
 .trim();
 }
+type Category = (typeof CATEGORIES)[number];
+
+function isCategory(x: string): x is Category {
+return (CATEGORIES as readonly string[]).includes(x);
+}
 function stripQuotes(s: string) {
 const t = cleanCell(s);
 // 両端の " を何重でも剥がす → 残ってる引用符も全消し
@@ -296,9 +301,12 @@ messages.push(`monthが不正（${r.month} → ${month}） ※YYYY-MMのみ`);
 }
 
 // category
-if (!CATEGORIES.includes(category)) {
+if (!isCategory(category)) {
 messages.push(`categoryが不正（${category}）`);
+} else {
+// ここから先は category が Category 型として扱われる
 }
+
 
 // budget
 if (!Number.isFinite(budget)) {
