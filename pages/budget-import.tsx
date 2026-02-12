@@ -264,7 +264,8 @@ for (let i = startIdx; i < table.length; i++) {
 const lineNo = i + 1; // 表示用（1始まり）
 const row = table[i];
 
-// 空行スキップ
+// 空行スキップ（row が undefined の可能性に対応）
+if (!row) continue;
 if (row.every((c) => cleanCell(c) === "")) continue;
 
 inRows.push({
