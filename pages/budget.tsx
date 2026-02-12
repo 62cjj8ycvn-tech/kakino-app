@@ -66,13 +66,19 @@ const m = String(d.getMonth() + 1).padStart(2, "0");
 return `${y}-${m}`;
 }
 function parseYM(ym: string) {
-const [y, m] = ym.split("-").map(Number);
-return { y, m };
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+return { y: Number.isFinite(y) ? y : 1970, m: Number.isFinite(m) ? m : 1 };
 }
 function ymToIndex(ym: string) {
+
 const { y, m } = parseYM(ym);
+if (y == null || m == null) return 0;
+
 return y * 12 + (m - 1);
 }
+
 function indexToYM(idx: number) {
 const y = Math.floor(idx / 12);
 const m = (idx % 12) + 1;
