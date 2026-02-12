@@ -234,7 +234,14 @@ return { okRows: [] as RowOk[], errors: [{ lineNo: 1, messages: ["CSVが空で�
 }
 
 // ヘッダ検出（厳密にしすぎない）
-const header = table[0].map((h) => cleanCell(h).toLowerCase());
+// table が空 or 1行目が無いケースを先に弾く（TypeScript & 実行時の両方対策）
+const firstRow = table?.[0];
+if (!firstRow) {
+// ここは元の設計に合わせて：エラー表示したいなら throw / return などにしてOK
+throw new Error("CSVの内容が空です（ヘッダ行が見つかりません）");
+}
+
+const header = firstRow.map((h) => cleanCell(h).toLowerCase());
 const hasHeader =
 header.includes("month") &&
 header.includes("registrant") &&
