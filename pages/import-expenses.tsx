@@ -39,7 +39,12 @@ return s.trim();
 function isValidYMD(s: string) {
 // YYYY-MM-DD
 if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-const [y, m, d] = s.split("-").map((x) => Number(x));
+const parts = (s ?? "").split("-");
+const y = Number(parts[0] ?? NaN);
+const m = Number(parts[1] ?? NaN);
+const d = Number(parts[2] ?? NaN);
+if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+
 const dt = new Date(y, m - 1, d);
 return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
@@ -137,7 +142,11 @@ firstCol.includes("subCategory") &&
 firstCol.includes("source");
 
 // 通常: 1行目がヘッダで rowId,date,month,... が横に並ぶ
-const headerRow = matrix[0].map((x) => x.trim());
+if (!matrix[0]) {
+throw new Error("CSVにヘッダー行がありません");
+}
+
+const headerRow = matrix[0].map((x) => (x ?? "").trim());
 const looksNormal =
 headerRow.includes("rowId") &&
 headerRow.includes("date") &&
@@ -164,7 +173,10 @@ return { rows, meta: { kind: "normal", rawRows: matrix.length } };
 
 function parseNormal(mat: string[][]): ExpenseRow[] {
 if (mat.length < 2) return [];
-const headers = mat[0].map((h) => h.trim());
+const header0 = mat[0];
+if (!header0) return [];
+
+const headers = header0.map((h) => (h ?? "").trim());
 
 return mat.slice(1).map((line) => {
 const obj: Record<string, string> = {};

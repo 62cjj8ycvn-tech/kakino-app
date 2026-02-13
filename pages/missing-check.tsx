@@ -10,7 +10,12 @@ setDoc,
 where,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { CATEGORIES, SUBCATEGORIES, REGISTRANTS } from "../lib/masterData";
+import { CATEGORIES, SUBCATEGORIES } from "../lib/masterData";
+type Category = (typeof CATEGORIES)[number];
+
+function isCategory(x: any): x is Category {
+return (CATEGORIES as readonly string[]).includes(String(x));
+}
 
 /**
 * 漏れチェック（/missing-check）
@@ -87,8 +92,14 @@ const m = String(d.getMonth() + 1).padStart(2, "0");
 return `${y}-${m}`;
 }
 function addMonths(ym: string, delta: number) {
-const [yy, mm] = ym.split("-").map((x) => Number(x));
-const d = new Date(yy, (mm - 1) + delta, 1);
+const parts = (ym ?? "").split("-");
+const yy = Number(parts[0] ?? 1970);
+const mm = Number(parts[1] ?? 1);
+
+const y0 = Number.isFinite(yy) ? yy : 1970;
+const m0 = Number.isFinite(mm) ? mm : 1;
+
+const d = new Date(y0, (m0 - 1) + delta, 1);
 const y = d.getFullYear();
 const m = String(d.getMonth() + 1).padStart(2, "0");
 return `${y}-${m}`;
@@ -135,7 +146,7 @@ return `${month}__${registrant}`;
 }
 
 async function fetchBudgetDoc(month: string): Promise<BudgetDoc | null> {
-const tryRegs = [ALL_REG, ...REGISTRANTS];
+const tryRegs = [ALL_REG, "将哉", "未有"]; // 必要なら "その他" も追加
 for (const r of tryRegs) {
 const snap = await getDoc(doc(db, "budgets", budgetDocId(month, r)));
 if (snap.exists()) return snap.data() as BudgetDoc;
@@ -213,14 +224,18 @@ const [evalMap, setEvalMap] = useState<Record<string, EvalResult>>({});
 const updateRow = (idx: number, patch: Partial<TemplateRow>) => {
 setRows((prev) => {
 const next = prev.slice();
-next[idx] = { ...next[idx], ...patch };
+const cur = next[idx];
+if (!cur) return prev; // 念のため
+
+next[idx] = { ...cur, ...patch } as TemplateRow;
 return next;
 });
 };
 
 const subOptionsFor = (category: string) => {
 if (!category) return [];
-const list = SUBCATEGORIES?.[category] ?? [];
+
+const list = isCategory(category) ? (SUBCATEGORIES[category] ?? []) : [];
 // ✅ 予算と一致させるため「自由入力」を入れる
 return [...list, BUDGET_FREE_LABEL];
 };

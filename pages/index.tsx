@@ -1,8 +1,13 @@
+// pages/index.tsx
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+
 export default function Home() {
-return (
-<div style={{ padding: 40 }}>
-<h1>家計簿アプリ</h1>
-<p>本番環境テスト中</p>
-</div>
-);
+const router = useRouter();
+
+useEffect(() => {
+router.replace("/graph");
+}, [router]);
+
+return null;
 }

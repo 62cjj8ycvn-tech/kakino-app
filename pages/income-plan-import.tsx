@@ -12,6 +12,11 @@ import { db } from "../lib/firebase";
 * budgets/{month}__{(全員)}
 * incomePlans.{registrant} = amount
 */
+type BudgetDoc = {
+month: string;
+registrant: string;
+incomePlans?: Record<string, number>;
+};
 
 type CsvRow = {
 month: string;
@@ -64,9 +69,13 @@ const [fileName, setFileName] = useState("");
 const [busy, setBusy] = useState(false);
 const [result, setResult] = useState("");
 
-const { okRows, errors, preview } = useMemo(() => {
+const { okRows, errors, preview } = useMemo<{
+okRows: CsvRow[];
+errors: RowError[];
+preview: Record<string, BudgetDoc>;
+}>(() => {
 if (!csvText.trim()) {
-return { okRows: [], errors: [], preview: {} as any };
+return { okRows: [], errors: [], preview: {} };
 }
 
 const table = parseCSV(csvText);
@@ -78,15 +87,22 @@ header.includes("registrant") &&
 header.includes("amount");
 
 const start = hasHeader ? 1 : 0;
-const col = (name: string) => header.indexOf(name);
+
+// ヘッダあり→名前で探す / ヘッダなし→固定位置
+const col = (name: string) => (hasHeader ? header.indexOf(name) : -1);
+const colMonth = hasHeader ? col("month") : 0;
+const colReg = hasHeader ? col("registrant") : 1;
+const colAmt = hasHeader ? col("amount") : 2;
 
 const rows: CsvRow[] = [];
 for (let i = start; i < table.length; i++) {
 const r = table[i];
+if (!r) continue;
+
 rows.push({
-month: r[col("month")] ?? "",
-registrant: r[col("registrant")] ?? "",
-amount: r[col("amount")] ?? "",
+month: r[colMonth] ?? "",
+registrant: r[colReg] ?? "",
+amount: r[colAmt] ?? "",
 lineNo: i + 1,
 });
 }
@@ -103,8 +119,7 @@ const amount = toNumberSafe(r.amount);
 if (!isValidMonth(month)) msgs.push(`month不正 (${r.month})`);
 if (!VALID_REGISTRANTS.includes(registrant))
 msgs.push(`registrant不正 (${r.registrant})`);
-if (!Number.isFinite(amount) || amount < 0)
-msgs.push(`amount不正 (${r.amount})`);
+if (!Number.isFinite(amount) || amount < 0) msgs.push(`amount不正 (${r.amount})`);
 
 if (msgs.length > 0) {
 errs.push({ lineNo: r.lineNo, messages: msgs });
@@ -118,12 +133,14 @@ amount: String(amount),
 }
 }
 
-// プレビュー用にまとめる
-const pv: Record<string, any> = {};
+// プレビュー用にまとめる（docId -> BudgetDoc）
+const pv: Record<string, BudgetDoc> = {};
 for (const r of oks) {
 const docId = `${r.month}__${BUDGET_REG}`;
-pv[docId] ??= { month: r.month, incomePlans: {} };
-pv[docId].incomePlans[r.registrant] = Number(r.amount);
+if (!pv[docId]) {
+pv[docId] = { month: r.month, registrant: BUDGET_REG, incomePlans: {} };
+}
+pv[docId].incomePlans![r.registrant] = Number(r.amount);
 }
 
 return { okRows: oks, errors: errs, preview: pv };

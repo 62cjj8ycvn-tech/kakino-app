@@ -3,6 +3,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { CATEGORIES, SUBCATEGORIES } from "../lib/masterData";
+type Category = (typeof CATEGORIES)[number];
+
+function isCategory(x: any): x is Category {
+return (CATEGORIES as readonly string[]).includes(String(x));
+}
 // =====================
 // ✅ 月キャッシュ追加（ここから）
 // =====================
@@ -25,12 +30,22 @@ return Date.now() - ts <= ttl;
 
 function fmtMdDow(ymd: string) {
 // ymd: "YYYY-MM-DD"
-const [y, m, d] = ymd.split("-").map((v) => Number(v));
-const dt = new Date(y, m - 1, d);
+const [ys, ms, ds] = (ymd ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+const d = Number(ds);
+
+// 不正値の保険（変な値が来ても落とさない）
+const yy = Number.isFinite(y) ? y : 1970;
+const mm = Number.isFinite(m) ? m : 1;
+const dd = Number.isFinite(d) ? d : 1;
+
+const dt = new Date(yy, mm - 1, dd);
 const dow = dt.getDay(); // 0=日
 const JP = ["日", "月", "火", "水", "木", "金", "土"];
-return { text: `${m}/${d}(${JP[dow]})`, isWeekend: dow === 0 || dow === 6 };
+return { text: `${mm}/${dd}(${JP[dow]})`, isWeekend: dow === 0 || dow === 6 };
 }
+
 
 /**
 * GraphPage（完成版）
@@ -93,8 +108,14 @@ return `${y}-${m}`;
 }
 
 function parseYM(ym: string) {
-const [y, m] = ym.split("-").map(Number);
-return { y, m };
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+
+return {
+y: Number.isFinite(y) ? y : 1970,
+m: Number.isFinite(m) ? m : 1,
+};
 }
 
 function daysInMonth(ym: string) {
@@ -189,7 +210,7 @@ type Scope = "total" | "shoya" | "miu";
 */
 function normalizeCategoryBudgets(
 docData: BudgetDoc | null,
-categories: string[]
+categories: readonly string[]
 ): { cat: Record<string, number>; sub: Record<string, Record<string, number>> } {
 const cat: Record<string, number> = {};
 const sub = (docData?.subBudgets ?? {}) as Record<string, Record<string, number>>;
@@ -330,7 +351,6 @@ return;
 // =====================
 // ✅ expenses（月キャッシュ）
 // =====================
-
 const resultByMonth: Record<string, ExpenseDoc[]> = {};
 const missing: string[] = [];
 
@@ -343,9 +363,10 @@ missing.push(ym);
 }
 }
 
-if (missing.length > 0) {
+// 取得が必要な月は空配列で初期化
 for (const ym of missing) resultByMonth[ym] = [];
 
+// Firestoreは "in" が最大10なので chunk
 for (const part of chunk(missing, 10)) {
 const qExp = query(collection(db, "expenses"), where("month", "in", part));
 const snap = await getDocs(qExp);
@@ -362,15 +383,18 @@ subCategory: String(raw.subCategory ?? ""),
 source: String(raw.source ?? ""),
 };
 
+const ym = row.month;
+if (!resultByMonth[ym]) resultByMonth[ym] = [];
+resultByMonth[ym].push(row);
+});
 }
 
-
+// ✅ ここでまとめてキャッシュ保存（for(part) の外）
+if (missing.length > 0) {
 const now = Date.now();
 for (const ym of missing) {
-expensesCacheByMonth.set(ym, {
-rows: resultByMonth[ym],
-cachedAt: now,
-});
+const rows = resultByMonth[ym] ?? [];
+expensesCacheByMonth.set(ym, { rows, cachedAt: now });
 }
 }
 
@@ -379,19 +403,17 @@ const expList = months.flatMap((ym) => resultByMonth[ym] ?? []);
 // =====================
 // ✅ incomes（期間キャッシュ）
 // =====================
+const startYM = months[0]!; // months.length===0 は上で弾いてる
+const endYM2 = months[months.length - 1] ?? startYM;
 
-const startYM = months[0];
-const endYM = months[months.length - 1];
 const start = `${startYM}-01`;
-
-const { y, m } = parseYM(endYM);
+const { y, m } = parseYM(endYM2);
 const nextMonth = new Date(y, m, 1);
 const next = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
 
 const rangeKey = `${start}__${next}`;
 
 let incList: IncomeDoc[] = [];
-
 const cachedInc = incomesCacheByRange.get(rangeKey);
 
 if (cachedInc && isFresh(cachedInc.cachedAt, INCOMES_TTL_MS)) {
@@ -402,24 +424,18 @@ collection(db, "incomes"),
 where("date", ">=", start),
 where("date", "<", next)
 );
-
 const snap = await getDocs(qInc);
 
 incList = snap.docs
 .map((d) => d.data() as IncomeDoc)
 .filter((x) => Number(x.amount) > 0);
 
-incomesCacheByRange.set(rangeKey, {
-rows: incList,
-cachedAt: Date.now(),
-});
+incomesCacheByRange.set(rangeKey, { rows: incList, cachedAt: Date.now() });
 }
 
 if (!alive) return;
-
 setRowsMonth(expList);
 setIncomesMonth(incList);
-
 } catch (e) {
 console.error(e);
 if (!alive) return;
@@ -434,7 +450,6 @@ setLoading(false);
 return () => {
 alive = false;
 };
-
 }, [monthsActive.join("|")]);
 
 // ====== budgets load ======
@@ -492,9 +507,10 @@ const docData = budgetDocs[ym] ?? null;
 const normalized = normalizeCategoryBudgets(docData, CATEGORIES);
 
 for (const c of CATEGORIES) {
-catSum[c] += Number(normalized.cat?.[c] ?? 0);
+catSum[c] = (catSum[c] ?? 0) + Number(normalized.cat?.[c] ?? 0);
 const sMap = (normalized.sub?.[c] ?? {}) as Record<string, number>;
 for (const [subKey, v] of Object.entries(sMap)) {
+subSum[c] = subSum[c] ?? {};
 subSum[c][subKey] = (subSum[c][subKey] ?? 0) + (Number(v) || 0);
 }
 }
@@ -601,7 +617,7 @@ return [
 }
 
 const FREE = "自由入力";
-const officialRaw = SUBCATEGORIES?.[drillCat] ?? [];
+const officialRaw = isCategory(drillCat) ? (SUBCATEGORIES[drillCat] ?? []) : [];
 const official = officialRaw.filter((s) => s !== FREE);
 
 const m = new Map<string, number>();
@@ -639,8 +655,9 @@ return out;
 }
 
 const FREE = "自由入力";
-const officialRaw = SUBCATEGORIES?.[cat] ?? [];
+const officialRaw = isCategory(cat) ? (SUBCATEGORIES[cat] ?? []) : [];
 const official = officialRaw.filter((s) => s !== FREE);
+
 
 if (sub === FREE) {
 return out.filter((r) => {
@@ -783,10 +800,11 @@ const cats = showCollapsedCats
 ? CATEGORIES
 : CATEGORIES.filter((c) => !COLLAPSE_CATS.includes(c as any));
 
-totalBudget += cats.reduce(
-(a, c) => a + (Number(n?.cat?.[c] ?? 0) || 0),
-0
-);
+let catsBudget = 0;
+for (const c of cats as string[]) {
+catsBudget += Number(n?.cat?.[c] ?? 0) || 0;
+}
+totalBudget += catsBudget;
 }
 }
 
@@ -842,7 +860,12 @@ baseBudget = Number(categoryBudgets?.[lineFocus.cat] ?? 0);
 const catsForLine = showCollapsedCats
 ? CATEGORIES
 : CATEGORIES.filter((c) => !COLLAPSE_CATS.includes(c as any));
-baseBudget = catsForLine.reduce((a, c) => a + (Number(categoryBudgets?.[c] ?? 0) || 0), 0);
+
+let sum = 0;
+for (const c of catsForLine as readonly string[]) {
+sum += Number((categoryBudgets as any)?.[c] ?? 0) || 0;
+}
+baseBudget = sum;
 }
 
 // 1日目の実績（lineFocus/畳みを反映した「その1日ぶん」）
@@ -920,7 +943,12 @@ budget = Number(categoryBudgets?.[lineFocus.cat] ?? 0);
 const catsForLine = showCollapsedCats
 ? CATEGORIES
 : CATEGORIES.filter((c) => !COLLAPSE_CATS.includes(c as any));
-budget = catsForLine.reduce((a, c) => a + (Number(categoryBudgets?.[c] ?? 0) || 0), 0);
+
+let sum = 0;
+for (const c of catsForLine as readonly string[]) {
+sum += Number((categoryBudgets as any)?.[c] ?? 0) || 0;
+}
+budget = sum;
 }
 
 const diff = budget - monthEndValue;
@@ -964,10 +992,10 @@ const visibleCats = showCollapsedCats
 : CATEGORIES.filter((c) => !COLLAPSE_CATS.includes(c as any));
 
 // ✅ 予算（全体）
-const totalBudgetVisible = visibleCats.reduce(
-(sum, c) => sum + (Number(categoryBudgets?.[c] ?? 0) || 0),
-0
-);
+let totalBudgetVisible = 0;
+for (const c of visibleCats as readonly string[]) {
+totalBudgetVisible += Number((categoryBudgets as any)?.[c] ?? 0) || 0;
+}
 
 // ✅ 支出（全体 / scope反映）
 // scopeは「支出合計/将哉/未有」の表示に合わせる（いまのUIと整合）
@@ -977,8 +1005,9 @@ const scoped = scope === "total"
 ? rowsMonth.filter((r) => isShoyaSource(r.source))
 : rowsMonth.filter((r) => isMiuSource(r.source));
 
+const visibleSet = new Set<string>(visibleCats as readonly string[]);
 const actualVisible = scoped
-.filter((r) => visibleCats.includes(r.category))
+.filter((r) => visibleSet.has(String(r.category ?? "")))
 .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
 // ✅ 目安計算（あなたの指定どおり）
@@ -2014,11 +2043,14 @@ onClick={() => {
 // 前日/前月
 if (detailModeMonthly) {
 const idx = monthsActive.indexOf(detailKey);
-if (idx > 0) setDetailKey(monthsActive[idx - 1]);
+const prev = idx > 0 ? monthsActive[idx - 1] : undefined;
+if (prev) setDetailKey(prev);
 } else {
 const idx = days.indexOf(detailKey);
-if (idx > 0) setDetailKey(days[idx - 1]);
+const prev = idx > 0 ? days[idx - 1] : undefined;
+if (prev) setDetailKey(prev);
 }
+
 }}
 >
 ←
@@ -2070,10 +2102,18 @@ onClick={() => {
 // 翌日/翌月
 if (detailModeMonthly) {
 const idx = monthsActive.indexOf(detailKey);
-if (idx >= 0 && idx < monthsActive.length - 1) setDetailKey(monthsActive[idx + 1]);
+const next =
+idx >= 0 && idx < monthsActive.length - 1
+? monthsActive[idx + 1]
+: undefined;
+if (next) setDetailKey(next);
 } else {
 const idx = days.indexOf(detailKey);
-if (idx >= 0 && idx < days.length - 1) setDetailKey(days[idx + 1]);
+const next =
+idx >= 0 && idx < days.length - 1
+? days[idx + 1]
+: undefined;
+if (next) setDetailKey(next);
 }
 }}
 >
@@ -2261,14 +2301,23 @@ if (mode === "daily") {
 // 外食（土日20倍）
 if (useGaisyokuWeekendBoost) {
 const weights = dates.map((date) => {
-const [yy, mm, dd] = date.split("-").map((v) => Number(v));
+const [ys, ms, ds] = (date ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+const d = Number(ds);
+
+const yy = Number.isFinite(y) ? y : 1970;
+const mm = Number.isFinite(m) ? m : 1;
+const dd = Number.isFinite(d) ? d : 1;
+
 const dow = new Date(yy, mm - 1, dd).getDay();
 const isWeekend = dow === 0 || dow === 6;
 return isWeekend ? 20 : 1;
 });
 const sumW = weights.reduce((a, b) => a + b, 0) || 1;
 return dates.map((date, i) => {
-const v = (endVal * weights[i]) / sumW; // 月予算を重みで日割り
+const w = weights[i] ?? 1; // ✅ undefined保険
+const v = (endVal * w) / sumW; // 月予算を重みで日割り
 return { date, value: Math.round(v) };
 });
 }
@@ -2285,7 +2334,10 @@ return dates.map((date) => ({ date, value: 0 }));
 // 重み（外食：土日=20, 平日=1）
 const weightOf = (date: string) => {
 if (!useGaisyokuWeekendBoost) return 1;
-const [yy, mm, dd] = date.split("-").map((v) => Number(v));
+const parts = date.split("-");
+const yy = Number(parts[0] ?? 1970);
+const mm = Number(parts[1] ?? 1);
+const dd = Number(parts[2] ?? 1);
 const dow = new Date(yy, mm - 1, dd).getDay(); // 0=日,6=土
 const isWeekend = dow === 0 || dow === 6;
 return isWeekend ? 20 : 1;
@@ -2322,7 +2374,7 @@ const sumW = weights.reduce((a, b) => a + b, 0) || 1;
 
 let acc = startVal;
 for (let i = 1; i < dim; i++) {
-const w = weights[i - 1];
+const w = weights[i - 1] ?? 0; // ✅ undefined保険
 const add = (remain * w) / sumW;
 acc += add;
 cumulative[i] = Math.round(acc);
@@ -2347,7 +2399,8 @@ const sumW = weights.reduce((a, b) => a + b, 0) || 1;
 
 let acc = 0;
 for (let i = 0; i < dim; i++) {
-const add = (endVal * weights[i]) / sumW;
+const w = weights[i] ?? 0; // ✅ undefined保険
+const add = (endVal * w) / sumW;
 acc += add;
 cumulative[i] = Math.round(acc);
 }
@@ -2357,7 +2410,7 @@ cumulative[i] = Math.round(acc);
 
 
 // cumulative
-return dates.map((date, i) => ({ date, value: Math.round(cumulative[i]) }));
+return dates.map((date, i) => ({ date, value: Math.round(cumulative[i] ?? 0) }));
 }
 
 /** ---------- LineChart（元の完成版を復元 + 今回追加：土日丸印色/クリックモーダル） ---------- */
@@ -2463,11 +2516,17 @@ const change: number[] = [];
 const firstByYear = new Map<number, number>();
 
 for (let i = 0; i < data.length; i++) {
-const y = Number(data[i].date.slice(0, 4));
+const item = data[i];
+if (!item) continue;
+const y = Number(item.date.slice(0, 4));
 if (!firstByYear.has(y)) firstByYear.set(y, i);
 
 if (i > 0) {
-const prevY = Number(data[i - 1].date.slice(0, 4));
+const prevItem = data[i - 1];
+if (!prevItem) continue;
+
+const prevY = Number(prevItem.date.slice(0, 4));
+
 if (y !== prevY) change.push(i);
 }
 }
@@ -2487,12 +2546,12 @@ const todayIdx = clamp(forecast.today - 1, 0, dim - 1);
 
 const p0 = pts[0];
 const pt = pts[todayIdx];
+const pLast = pts[dim - 1];
+if (!p0 || !pt || !pLast) return null;
 const pend = {
-...pts[dim - 1],
+...pLast,
 y: valueToY(Number(forecast.monthEndValue) || 0, minValue, maxValue),
 };
-
-if (!p0 || !pt) return null;
 
 const start = p0;
 const mid = forecast.today === 1 ? { ...pt, y: p0.y } : pt;
@@ -2518,13 +2577,19 @@ const interior = vals.slice(0, -1);
 const labelVals: number[] = [];
 
 if (interior.length === 3) {
-labelVals.push(interior[1]);
+const v = interior[1];
+if (v != null) labelVals.push(v);
 } else if (interior.length >= 4) {
-labelVals.push(interior[1], interior[3]);
+const v1 = interior[1];
+const v2 = interior[3];
+if (v1 != null) labelVals.push(v1);
+if (v2 != null) labelVals.push(v2);
 } else if (interior.length === 2) {
-labelVals.push(interior[1]);
+const v = interior[1];
+if (v != null) labelVals.push(v);
 } else if (interior.length === 1) {
-labelVals.push(interior[0]);
+const v = interior[0];
+if (v != null) labelVals.push(v);
 }
 
 // MAX
@@ -2659,7 +2724,10 @@ onClick={() => onPointClick?.(p.date, true)}
 }
 
 // 単月（日別）
-const [yy, mm, dd] = p.date.split("-").map((v) => Number(v));
+const parts = (p.date ?? "").split("-");
+const yy = Number(parts[0] ?? 1970);
+const mm = Number(parts[1] ?? 1);
+const dd = Number(parts[2] ?? 1);
 const dow = new Date(yy, mm - 1, dd).getDay();
 const isWeekend = dow === 0 || dow === 6;
 

@@ -77,11 +77,17 @@ function monthOfYMD(ymd: string) {
 return (ymd || "").slice(0, 7);
 }
 function addMonthsYM(ym: string, diff: number) {
-const [y, m] = ym.split("-").map((x) => Number(x));
-const d = new Date(y, (m - 1) + diff, 1);
-const yy = d.getFullYear();
-const mm = String(d.getMonth() + 1).padStart(2, "0");
-return `${yy}-${mm}`;
+const parts = (ym ?? "").split("-");
+const y = Number(parts[0] ?? 1970);
+const m = Number(parts[1] ?? 1);
+
+const yy = Number.isFinite(y) ? y : 1970;
+const mm = Number.isFinite(m) ? m : 1;
+
+const d = new Date(yy, (mm - 1) + diff, 1);
+const y2 = d.getFullYear();
+const m2 = String(d.getMonth() + 1).padStart(2, "0");
+return `${y2}-${m2}`;
 }
 
 type HeaderKey = "date" | "amount" | "source" | "memo" | "registrant" | null;
@@ -162,11 +168,18 @@ const load = async (targetMonth: string) => {
 setLoading(true);
 try {
 const start = `${targetMonth}-01`;
-const [y, m] = targetMonth.split("-").map((x) => Number(x));
-const dNext = new Date(y, (m - 1) + 1, 1);
+const parts = (targetMonth ?? "").split("-");
+const y = Number(parts[0] ?? 1970);
+const m = Number(parts[1] ?? 1);
+
+const yy0 = Number.isFinite(y) ? y : 1970;
+const mm0 = Number.isFinite(m) ? m : 1;
+
+const dNext = new Date(yy0, mm0, 1); // 次月1日（mm0 は 1-12）
 const yy = dNext.getFullYear();
 const mm = String(dNext.getMonth() + 1).padStart(2, "0");
 const next = `${yy}-${mm}-01`;
+
 
 const qInc = query(
 collection(db, "incomes"),

@@ -17,8 +17,10 @@ const m = String(d.getMonth() + 1).padStart(2, "0");
 return `${y}-${m}`;
 }
 function parseYM(ym: string) {
-const [y, m] = ym.split("-").map((x) => Number(x));
-return { y, m }; // m 1-12
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+return { y: Number.isFinite(y) ? y : 1970, m: Number.isFinite(m) ? m : 1 };
 }
 function ymdStartOfMonth(ym: string) {
 return `${ym}-01`;

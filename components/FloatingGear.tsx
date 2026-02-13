@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { signOut } from "firebase/auth";
+import { auth } from "../lib/firebase";
 
 type Pos = { x: number; y: number };
 
@@ -24,7 +26,16 @@ type Item = { href: string; label: string };
 
 export default function FloatingGear() {
 const router = useRouter();
-
+const onLogout = async () => {
+setOpen(false);
+try {
+await signOut(auth);
+} catch (e) {
+console.error(e);
+} finally {
+router.replace("/login");
+}
+};
 const items = useMemo<Item[]>(
 () => [
 { href: "/expense", label: "支出" },
@@ -435,7 +446,26 @@ gap: 10,
 ))}
 </div>
 </GroupCard>
-
+<GroupCard title="アカウント" subtitle="ログアウト">
+<button
+onClick={onLogout}
+style={{
+width: "100%",
+height: 46,
+borderRadius: 14,
+border: "1px solid rgba(220,38,38,0.25)",
+background: "linear-gradient(180deg, rgba(254,226,226,0.85), rgba(255,255,255,0.95))",
+color: "#991b1b",
+fontWeight: 900,
+cursor: "pointer",
+display: "grid",
+placeItems: "center",
+boxShadow: "0 10px 22px rgba(15,23,42,0.08)",
+}}
+>
+ログアウト
+</button>
+</GroupCard>
 {/* 管理・入出力 */}
 <GroupCard title="管理・入出力" subtitle="一括/漏れ/CSV/設定など">
 <div

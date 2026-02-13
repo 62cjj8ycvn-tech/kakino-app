@@ -75,8 +75,16 @@ return 0;
 }
 function diffDaysFromToday(ymd: string) {
 if (!ymd || ymd.length < 10) return Infinity;
-const [y, m, d] = ymd.split("-").map((x) => Number(x));
-const due = new Date(y, m - 1, d);
+const parts = (ymd ?? "").split("-");
+const y = Number(parts[0] ?? 1970);
+const m = Number(parts[1] ?? 1);
+const d = Number(parts[2] ?? 1);
+
+const y0 = Number.isFinite(y) ? y : 1970;
+const m0 = Number.isFinite(m) ? m : 1;
+const d0 = Number.isFinite(d) ? d : 1;
+
+const due = new Date(y0, m0 - 1, d0);
 const now = new Date();
 const a = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 const b = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();

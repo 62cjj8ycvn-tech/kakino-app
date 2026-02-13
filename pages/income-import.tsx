@@ -63,8 +63,17 @@ return Number.isFinite(n) ? n : NaN;
 function isValidYMD(ymd: string) {
 // YYYY-MM-DD（簡易）
 if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
-const [y, m, d] = ymd.split("-").map((v) => Number(v));
+const parts = ymd.split("-");
+if (parts.length !== 3) return false;
+
+const y = Number(parts[0]);
+const m = Number(parts[1]);
+const d = Number(parts[2]);
+
+if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+
 const dt = new Date(y, m - 1, d);
+
 return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 
@@ -145,6 +154,14 @@ return { okRows: [] as IncomeRowOk[], errors: [{ lineNo: 1, messages: ["CSVが�
 }
 
 // ヘッダ検出（ゆるめ）
+if (!table[0]) {
+return {
+okRows: [] as IncomeRowOk[],
+errors: [{ lineNo: 1, messages: ["CSVの1行目が取得できません"] }],
+preview: [] as IncomeRowOk[],
+};
+}
+
 const header = table[0].map((h) => cleanCell(h).toLowerCase());
 const hasHeader = header.includes("date") && header.includes("source") && header.includes("amount");
 
@@ -161,6 +178,7 @@ const inRows: IncomeRowIn[] = [];
 for (let i = startIdx; i < table.length; i++) {
 const lineNo = i + 1;
 const row = table[i];
+if (!row) continue; // ✅ undefined guard
 if (row.every((c) => cleanCell(c) === "")) continue;
 
 inRows.push({
@@ -170,6 +188,7 @@ amountRaw: row[colAmount] ?? "",
 memo: row[colMemo] ?? "",
 lineNo,
 });
+
 }
 
 const errs: RowErr[] = [];

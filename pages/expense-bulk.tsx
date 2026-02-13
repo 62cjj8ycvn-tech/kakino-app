@@ -16,11 +16,8 @@ SUBCATEGORIES,
 EXPENSE_SOURCES,
 REGISTRANTS,
 } from "../lib/masterData";
-import {
-BulkTemplateRow,
-loadBulkTemplate,
-saveBulkTemplate,
-} from "../lib/templates";
+import type { BulkTemplateRow } from "../lib/templates";
+import { loadBulkTemplate, saveBulkTemplate } from "../lib/templates";
 
 /* ================= util ================= */
 

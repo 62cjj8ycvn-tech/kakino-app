@@ -130,8 +130,33 @@ const n = Number(d);
 if (!Number.isFinite(n)) return NaN;
 return isMinus ? -n : n;
 }
+function parseYMD(ymd: string) {
+const [ys, ms, ds] = (ymd ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+const d = Number(ds);
+
+// ✅ 壊れてても落とさない
+if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+return { y: 1970, m: 1, d: 1 };
+}
+return { y, m, d };
+}
+
 function addMonthsYM(ym: string, diff: number) {
-const [y, m] = ym.split("-").map((x) => Number(x));
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+
+// ✅ 壊れた ym が来ても落とさない（とりあえず今月扱い）
+if (!Number.isFinite(y) || !Number.isFinite(m)) {
+const now = new Date();
+const d = new Date(now.getFullYear(), now.getMonth() + diff, 1);
+const yy = d.getFullYear();
+const mm = String(d.getMonth() + 1).padStart(2, "0");
+return `${yy}-${mm}`;
+}
+
 const d = new Date(y, (m - 1) + diff, 1);
 const yy = d.getFullYear();
 const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -144,12 +169,19 @@ return `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 function diffDays(fromYMD: string, toYMD: string) {
 // from/to: YYYY-MM-DD
 if (!fromYMD || !toYMD) return Infinity;
-const [fy, fm, fd] = fromYMD.split("-").map(Number);
-const [ty, tm, td] = toYMD.split("-").map(Number);
+const { y: fy, m: fm, d: fd } = parseYMD(fromYMD);
+const { y: ty, m: tm, d: td } = parseYMD(toYMD);
+
 const a = new Date(fy, fm - 1, fd).getTime();
 const b = new Date(ty, tm - 1, td).getTime();
 const ms = b - a;
 return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+type Category = (typeof CATEGORIES)[number];
+
+function isCategory(x: string): x is Category {
+return (CATEGORIES as readonly string[]).includes(x);
 }
 
 type HeaderKey = "date" | "amount" | "category" | "subCategory" | "source" | null;
@@ -250,15 +282,17 @@ const closeFilter = () => setFilterOpen(false);
 
 // options
 const subCategoryOptions = useMemo(() => {
-if (!category) return [];
-const list = SUBCATEGORIES?.[category] ?? [];
+if (!category || !isCategory(category)) return [];
+
+const list = SUBCATEGORIES[category] ?? [];
 const withoutFree = list.filter((s) => s !== FREE_LABEL);
 return [...withoutFree, FREE_LABEL];
 }, [category]);
 
 const filterSubOptions = useMemo(() => {
-if (!filterCategory) return [];
-const list = SUBCATEGORIES?.[filterCategory] ?? [];
+if (!filterCategory || !isCategory(filterCategory)) return [""];
+
+const list = SUBCATEGORIES[filterCategory] ?? [];
 const withoutFree = list.filter((s) => s !== FREE_LABEL);
 return ["", ...withoutFree, FREE_LABEL];
 }, [filterCategory]);
@@ -307,14 +341,21 @@ if (filterCategory && r.category !== filterCategory) return false;
 
 if (filterSubCategory) {
 if (filterSubCategory === FREE_LABEL) {
-if (!r.category) return false;
-const master = SUBCATEGORIES?.[r.category] ?? [];
+const cat = r.category;
+
+// ✅ ここで cat を Category に絞る
+if (!cat || !isCategory(cat)) return false;
+
+const master = SUBCATEGORIES[cat] ?? [];
 const masterWithoutFree = master.filter((s) => s !== FREE_LABEL);
+
+// ✅ FREE_LABEL = 「マスタに無い内訳」だけ通す
 if (masterWithoutFree.includes(r.subCategory)) return false;
 if (!r.subCategory || r.subCategory === FREE_LABEL) return false;
 } else {
 if (r.subCategory !== filterSubCategory) return false;
 }
+
 }
 
 if (filterSource && r.source !== filterSource) return false;
@@ -353,9 +394,12 @@ const total = useMemo(
 
 // ---- 最終登録日カード（将哉/未有） ----
 const PERSONS = useMemo(() => {
-const base = ["将哉", "未有"];
-// masterDataが違っても壊れないように保険（存在するやつだけ出す）
-return base.filter((x) => REGISTRANTS.includes(x));
+const base = ["将哉", "未有"] as const;
+type Registrant = (typeof base)[number]; // "将哉" | "未有"
+return (base as readonly Registrant[]).filter((x) =>
+(REGISTRANTS as readonly Registrant[]).includes(x)
+);
+
 }, []);
 const [lastDates, setLastDates] = useState<Record<string, string>>({}); // registrant -> YYYY-MM-DD
 
@@ -430,8 +474,8 @@ setIsMinus((Number(r.amount) || 0) < 0);
 setAmountText(formatWithCommaDigits(String(Math.abs(Number(r.amount) || 0))));
 setCategory(r.category || "");
 
-const list = SUBCATEGORIES?.[r.category] ?? [];
-if (list.includes(r.subCategory)) {
+const list = isCategory(r.category) ? (SUBCATEGORIES[r.category] ?? []) : [];
+if (list.includes(r.subCategory as any)) {
 setSubCategorySelect(r.subCategory);
 setMemo(r.memo || "");
 } else {
@@ -652,7 +696,6 @@ topBlock: {
 } as React.CSSProperties,
 
 row1: {
-...this,
 } as any,
 
 lastCardsRow: {
@@ -1213,7 +1256,7 @@ role="button"
 <div>
 <div style={styles.label}>登録者（必須）</div>
 <div style={styles.regCardRow}>
-{["将哉", "未有"].map((p) => {
+{(["将哉", "未有"] as const).map((p) => {
 const exists = REGISTRANTS.includes(p);
 if (!exists) return <div key={p} />;
 const active = registrant === p;

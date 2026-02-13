@@ -71,9 +71,15 @@ const d = new Date();
 const y = d.getFullYear() - 1;
 return `${y}-01`;
 }
-function parseYM(ym: string) {
-const [y, m] = ym.split("-").map(Number);
-return { y, m };
+function parseYM(ym: string): { y: number; m: number } {
+const parts = String(ym ?? "").split("-");
+const y = Number(parts[0] ?? 1970);
+const m = Number(parts[1] ?? 1);
+
+const yy = Number.isFinite(y) ? y : 1970;
+const mm = Number.isFinite(m) ? m : 1;
+
+return { y: yy, m: mm };
 }
 function ymToIndex(ym: string) {
 const { y, m } = parseYM(ym);
@@ -101,8 +107,8 @@ function ymdStartOfMonth(ym: string) {
 return `${ym}-01`;
 }
 function ymdStartOfNextMonth(ym: string) {
-const { y, m } = parseYM(ym);
-const d = new Date(y, m, 1);
+const { y, m } = parseYM(ym); // m は 1-12
+const d = new Date(y, m, 1); // ここは m をそのまま入れると「次月」になる（Dateのmonthは0-based）
 const yy = d.getFullYear();
 const mm = String(d.getMonth() + 1).padStart(2, "0");
 return `${yy}-${mm}-01`;
@@ -121,7 +127,7 @@ return `${month}__${registrant}`;
 */
 function normalizeCategoryBudgets(
 docData: BudgetDoc | null,
-categories: string[]
+categories: readonly string[]
 ): { cat: Record<string, number>; sub: Record<string, Record<string, number>> } {
 const cat: Record<string, number> = {};
 const sub = (docData?.subBudgets ?? {}) as Record<string, Record<string, number>>;
@@ -216,8 +222,8 @@ let alive = true;
 (async () => {
 setLoading(true);
 try {
-const startYM = monthsActive[0];
-const endYM = monthsActive[monthsActive.length - 1];
+const startYM = monthsActive[0] ?? DEFAULT_START;
+const endYM = monthsActive[monthsActive.length - 1] ?? ymToday();
 
 const start = ymdStartOfMonth(startYM);
 const next = ymdStartOfNextMonth(endYM);
@@ -495,7 +501,7 @@ return includeTsumitate ? base + tsu : base;
 let accA = actualBaseBeforeRange;
 const actualCumulative: (number | null)[] = months.map((_, i) => {
 const d = actualMonthlyDelta[i];
-if (d === null) return null;
+if (d === null || d === undefined) return null;
 accA += d;
 return accA;
 });
@@ -503,7 +509,7 @@ return accA;
 // 予定累計：起点を「表示開始月より前の予定累計」にする
 let accP = plannedBaseBeforeRange;
 const plannedCumulativeAll: number[] = months.map((_, i) => {
-accP += plannedMonthlyDelta[i];
+accP += plannedMonthlyDelta[i] ?? 0;
 return accP;
 });
 
@@ -525,7 +531,7 @@ const plannedAtSame = Number(plannedCumulativeAll[lastActualIdx] ?? 0);
 const shift = actualLast - plannedAtSame;
 
 plannedCumulativeLinked = months.map((_, i) => {
-const v = plannedCumulativeAll[i];
+const v = plannedCumulativeAll[i] ?? 0; // ✅ undefined潰す
 if (i < lastActualIdx) return v;
 return v + shift;
 });
@@ -557,9 +563,14 @@ plannedBaseBeforeRange,
 
 // カード：最終残高
 const currentBalance = useMemo(() => {
-const a = series.actualSeries.map((x) => x.cumulative).filter((v) => v !== null) as number[];
+const a = series.actualSeries
+.map((x) => x.cumulative)
+.filter((v): v is number => v !== null);
+
 if (a.length === 0) return actualBaseBeforeRange;
-return a[a.length - 1];
+
+// ✅ a[a.length - 1] が undefined 扱いになるのを潰す
+return a[a.length - 1] ?? actualBaseBeforeRange;
 }, [series, actualBaseBeforeRange]);
 
 // 期間合計（表示期間の積立合計）
@@ -870,8 +881,12 @@ setRangeEnd(ymToday());
 months={series.months}
 mode={lineMode}
 showForecast={showForecast}
-actual={series.actualSeries.map((x) => (lineMode === "monthly" ? x.monthly : x.cumulative))}
-forecast={series.forecastSeries.map((x) => (lineMode === "monthly" ? x.monthly : x.cumulative))}
+actual={series.actualSeries.map((x) =>
+(lineMode === "monthly" ? x.monthly : x.cumulative) ?? null
+)}
+forecast={series.forecastSeries.map((x) =>
+(lineMode === "monthly" ? x.monthly : x.cumulative) ?? null
+)}
 />
 )}
 </div>
@@ -1051,9 +1066,13 @@ return 3;
 const yearLines = useMemo(() => {
 const out: { x: number; ym: string }[] = [];
 for (let i = 1; i < pts.length; i++) {
-const prevY = pts[i - 1].ym.slice(0, 4);
-const curY = pts[i].ym.slice(0, 4);
-if (prevY !== curY) out.push({ x: pts[i].x, ym: pts[i].ym });
+const prev = pts[i - 1];
+const cur = pts[i];
+if (!prev || !cur) continue;
+
+const prevY = prev.ym.slice(0, 4);
+const curY = cur.ym.slice(0, 4);
+if (prevY !== curY) out.push({ x: cur.x, ym: cur.ym });
 }
 return out;
 }, [pts]);
@@ -1078,7 +1097,9 @@ const moveSelected = (dir: -1 | 1) => {
 if (!selectedInfo) return;
 const nextIdx = selectedInfo.idx + dir;
 if (nextIdx < 0 || nextIdx >= months.length) return;
-setSelectedYM(months[nextIdx]);
+const nextYM = months[nextIdx];
+if (!nextYM) return;
+setSelectedYM(nextYM);
 };
 
 const diffColor = (diff: number | null) => {
@@ -1187,8 +1208,9 @@ return out;
 {pts.map((p, i) => {
 if (n > 12 && i % labelSkip !== 0 && i !== 0 && i !== n - 1) return null;
 
-const prevY = i > 0 ? pts[i - 1].ym.slice(0, 4) : null;
-const curY = p.ym.slice(0, 4);
+const prev = i > 0 ? pts[i - 1] : undefined;
+const prevY = prev?.ym ? prev.ym.slice(0, 4) : null;
+const curY = (p?.ym ?? "").slice(0, 4);
 const yearChanged = i === 0 || (prevY && prevY !== curY);
 
 const m = String(Number(p.ym.slice(5, 7)));

@@ -366,30 +366,29 @@ let nextSub = { ...prevSub };
 for (const { key, value } of resolved) {
 const parts = key.split("::");
 const kind = parts[0];
-const k = parts[1];
-if (!k) continue; // or return prev; / 何もせず次へ
-nextIncome[k] = value;
 
 if (kind === "income") {
 const k = parts[1];
+if (!k) continue;
 nextIncome[k] = value;
 }
 
 else if (kind === "cat") {
 const cat = parts[1];
+if (!cat) continue;
 nextCat[cat] = value;
 }
 
 else if (kind === "sub") {
 const cat = parts[1];
 const sub = parts[2];
+if (!cat || !sub) continue;
 
 nextSub[cat] = {
 ...(nextSub?.[cat] ?? {}),
 [sub]: value,
 };
 
-// 🔥 内訳合計をカテゴリに反映
 const subSum = Object.values(nextSub[cat]).reduce(
 (a, b) => a + (Number(b) || 0),
 0
@@ -398,6 +397,7 @@ const subSum = Object.values(nextSub[cat]).reduce(
 nextCat[cat] = subSum;
 }
 }
+
 
 const patch: any = {
 month: ym,

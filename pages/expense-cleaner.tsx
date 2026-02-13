@@ -13,7 +13,16 @@ Timestamp,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { CATEGORIES, REGISTRANTS } from "../lib/masterData";
+type Category = (typeof CATEGORIES)[number];
 
+function isCategory(x: string): x is Category {
+return (CATEGORIES as readonly string[]).includes(x);
+}
+type Registrant = (typeof REGISTRANTS)[number];
+
+function isRegistrant(x: string): x is Registrant {
+return (REGISTRANTS as readonly string[]).includes(x);
+}
 /**
 * Expense Cleaner（ゴミデータ捜索＆削除）
 *
@@ -62,7 +71,13 @@ return `${y}-${m}`;
 }
 
 function addMonthsYM(ym: string, diff: number) {
-const [y, m] = ym.split("-").map(Number);
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+
+// ✅ 不正な ym が来ても落とさない（ビルドも通す）
+if (!Number.isFinite(y) || !Number.isFinite(m)) return "1970-01";
+
 const d = new Date(y, (m - 1) + diff, 1);
 const yy = d.getFullYear();
 const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -99,13 +114,28 @@ return `${sign}¥${Math.abs(r).toLocaleString("ja-JP")}`;
 
 function tsFromLocalStartOfMonth(ym: string) {
 // local time → Date (00:00)
-const [y, m] = ym.split("-").map(Number);
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+
+// ✅ 不正な ym でも落とさない（ビルド通す）
+if (!Number.isFinite(y) || !Number.isFinite(m)) {
+return Timestamp.fromDate(new Date(1970, 0, 1, 0, 0, 0));
+}
+
 const d = new Date(y, m - 1, 1, 0, 0, 0);
 return Timestamp.fromDate(d);
 }
 function tsFromLocalStartOfNextMonth(ym: string) {
-const [y, m] = ym.split("-").map(Number);
-const d = new Date(y, m, 1, 0, 0, 0);
+const [ys, ms] = (ym ?? "").split("-");
+const y = Number(ys);
+const m = Number(ms);
+
+if (!Number.isFinite(y) || !Number.isFinite(m)) {
+return Timestamp.fromDate(new Date(1970, 0, 1, 0, 0, 0));
+}
+
+const d = new Date(y, m, 1, 0, 0, 0); // ✅ 次月なので m のまま
 return Timestamp.fromDate(d);
 }
 
@@ -280,11 +310,14 @@ if (ymFromDate !== month) reasons.push(`month/date不一致: ${month} vs ${ymFro
 }
 
 if (!Number.isFinite(amount)) reasons.push(`amount不正: ${safeStr(d.amount)}`);
-if (category && !CATEGORIES.includes(category)) reasons.push(`categoryマスタ外: ${category}`);
+if (category && !isCategory(category))
+    reasons.push(`categoryマスタ外: ${category}`);
+
 if (!category) reasons.push("categoryなし");
 
 if (!registrant) reasons.push("registrantなし");
-if (registrant && REGISTRANTS.length > 0 && !REGISTRANTS.includes(registrant)) {
+if (registrant && REGISTRANTS.length > 0 && !isRegistrant(registrant)) {
+
 reasons.push(`registrantマスタ外: ${registrant}`);
 }
 
