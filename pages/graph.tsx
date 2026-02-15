@@ -1371,7 +1371,7 @@ marginBottom: 8,
 
 barRow: {
 display: "grid",
-gridTemplateColumns: "72px 1fr 150px 40px",
+gridTemplateColumns: "72px 1fr 120px 40px",
 alignItems: "center",
 gap: 8,
 padding: "8px 0",
@@ -1379,12 +1379,12 @@ borderBottom: "1px dashed #e2e8f0",
 } as React.CSSProperties,
 
 warnIcon: {
-textAlign: "center",
-fontSize: 18,
-fontWeight: 900,
 display: "flex",
 justifyContent: "center",
 alignItems: "center",
+fontSize: 18,
+fontWeight: 900,
+height: "100%",
 } as React.CSSProperties,
 
 
@@ -1446,6 +1446,10 @@ borderLeft: "2px dotted #94a3b8",
 } as React.CSSProperties,
 
 rightBox: {
+display: "flex", // ✅ 横並び
+alignItems: "center", // ✅ 2段テキストの中央にアイコン
+justifyContent: "center",
+gap: 8,
 textAlign: "center",
 fontVariantNumeric: "tabular-nums",
 } as React.CSSProperties,
@@ -1872,6 +1876,8 @@ width: `${clamp(overW, 0, 100 - withinW)}%`,
 </div>
 
 <div style={styles.rightBox}>
+{/* ✅ 左：2段テキスト */}
+<div>
 <div
 style={{
 ...styles.rightActual,
@@ -1881,7 +1887,16 @@ color: (budget === 0 && actual > 0) || actual > budget ? "#dc2626" : "#0f172a",
 {fmtYen(actual)}
 </div>
 
-<div style={{ ...styles.rightGuide, color: gInfo.color }}>目安{gInfo.text}</div>
+<div style={{ ...styles.rightGuide, color: gInfo.color }}>
+目安{gInfo.text}
+</div>
+
+</div>
+
+{/* ✅ 右：アイコン（右隣に固定） */}
+<div style={styles.warnIcon}>
+{overBudget ? "⛔️" : hasSubOverGuide ? "⚠️" : ""}
+</div>
 </div>
 </div>
 );
