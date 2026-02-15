@@ -1460,14 +1460,6 @@ width: 0,
 borderLeft: "2px dotted #94a3b8",
 } as React.CSSProperties,
 
-rightBox: {
-display: "flex", // ✅ 横並び
-alignItems: "center", // ✅ 2段テキストの中央にアイコン
-justifyContent: "center",
-gap: 8,
-textAlign: "center",
-fontVariantNumeric: "tabular-nums",
-} as React.CSSProperties,
 
 rightActual: {
 fontSize: 12,
