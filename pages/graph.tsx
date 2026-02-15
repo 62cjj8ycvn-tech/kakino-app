@@ -1175,13 +1175,21 @@ const [detailKey, setDetailKey] = useState<string>(""); // "YYYY-MM-DD" or "YYYY
 const [detailModeMonthly, setDetailModeMonthly] = useState(false);
 
 // モーダル内フィルタ（カテゴリ/内訳/金額範囲/登録者）
-const [detailFilter, setDetailFilter] = useState<{
-category?: string;
-subCategory?: string;
-registrant?: string;
-amountMin?: string; // 入力は文字（空を許容）
-amountMax?: string;
-}>({});
+type DetailFilter = {
+category: string; // "" = 未指定
+subCategory: string; // "" = 未指定
+registrant: string; // "" = 未指定
+amountMin: string; // "" = 未指定
+amountMax: string; // "" = 未指定
+};
+
+const [detailFilter, setDetailFilter] = useState<DetailFilter>({
+category: "",
+subCategory: "",
+registrant: "",
+amountMin: "",
+amountMax: "",
+});
 
 // モーダル内ソート（全て昇順/降順可能）
 const [detailSort, setDetailSort] = useState<{
@@ -1193,7 +1201,13 @@ const openDetailByKey = (key: string, isMonthly: boolean) => {
 setDetailKey(key);
 setDetailModeMonthly(isMonthly);
 setDetailOpen(true);
-setDetailFilter({});
+setDetailFilter({
+category: "",
+subCategory: "",
+registrant: "",
+amountMin: "",
+amountMax: "",
+});
 setDetailSort({ key: "date", dir: "asc" });
 };
 
@@ -2410,8 +2424,8 @@ value={detailFilter.category ?? ""}
 onChange={(e) =>
 setDetailFilter((p) => ({
 ...p,
-category: e.target.value || undefined,
-subCategory: undefined,
+category: e.target.value,
+subCategory: "",
 }))
 }
 style={styles.inputBase}
@@ -2430,7 +2444,7 @@ style={styles.inputBase}
 <select
 value={detailFilter.subCategory ?? ""}
 onChange={(e) =>
-setDetailFilter((p) => ({ ...p, subCategory: e.target.value || undefined }))
+setDetailFilter((p) => ({ ...p, subCategory: e.target.value }))
 }
 style={styles.inputBase}
 >
@@ -2473,10 +2487,7 @@ style={styles.inputBase}
 <select
 value={detailFilter.registrant ?? ""}
 onChange={(e) =>
-setDetailFilter((p) => ({
-...p,
-registrant: e.target.value || undefined,
-}))
+setDetailFilter((p) => ({ ...p, registrant: e.target.value }))
 }
 style={styles.inputBase}
 >
