@@ -1174,18 +1174,27 @@ const [detailOpen, setDetailOpen] = useState(false);
 const [detailKey, setDetailKey] = useState<string>(""); // "YYYY-MM-DD" or "YYYY-MM"
 const [detailModeMonthly, setDetailModeMonthly] = useState(false);
 
-// モーダル内フィルタ（カテゴリ/内訳/登録者）
+// モーダル内フィルタ（カテゴリ/内訳/金額範囲/登録者）
 const [detailFilter, setDetailFilter] = useState<{
 category?: string;
 subCategory?: string;
 registrant?: string;
+amountMin?: string; // 入力は文字（空を許容）
+amountMax?: string;
 }>({});
+
+// モーダル内ソート（全て昇順/降順可能）
+const [detailSort, setDetailSort] = useState<{
+key: "date" | "amount" | "category" | "subCategory" | "registrant";
+dir: "asc" | "desc";
+}>({ key: "date", dir: "asc" });
 
 const openDetailByKey = (key: string, isMonthly: boolean) => {
 setDetailKey(key);
 setDetailModeMonthly(isMonthly);
 setDetailOpen(true);
 setDetailFilter({});
+setDetailSort({ key: "date", dir: "asc" });
 };
 
 // モーダルの明細（今のlineFocusを必ず反映）
@@ -1207,10 +1216,48 @@ if (detailFilter.category) out = out.filter((r) => r.category === detailFilter.c
 if (detailFilter.subCategory) out = out.filter((r) => r.subCategory === detailFilter.subCategory);
 if (detailFilter.registrant) out = out.filter((r) => r.registrant === detailFilter.registrant);
 
-// ⑤ 古い日付を上（昇順）
-out = out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+// ✅ 金額（範囲）
+const min = detailFilter.amountMin?.trim() ? Number(detailFilter.amountMin) : null;
+const max = detailFilter.amountMax?.trim() ? Number(detailFilter.amountMax) : null;
+
+if (min != null && Number.isFinite(min)) out = out.filter((r) => Number(r.amount) >= min);
+if (max != null && Number.isFinite(max)) out = out.filter((r) => Number(r.amount) <= max);
+
+// ✅ 並び替え（全て昇順/降順）
+const dirMul = detailSort.dir === "asc" ? 1 : -1;
+
+const toStr = (v: any) => String(v ?? "");
+const cmpStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+out = [...out].sort((a, b) => {
+const k = detailSort.key;
+
+if (k === "amount") {
+return (Number(a.amount) - Number(b.amount)) * dirMul;
+}
+if (k === "date") {
+return cmpStr(toStr(a.date), toStr(b.date)) * dirMul;
+}
+if (k === "category") {
+return cmpStr(toStr(a.category), toStr(b.category)) * dirMul;
+}
+if (k === "subCategory") {
+return cmpStr(toStr(a.subCategory), toStr(b.subCategory)) * dirMul;
+}
+// registrant
+return cmpStr(toStr(a.registrant), toStr(b.registrant)) * dirMul;
+});
+
 return out;
-}, [scopeFiltered, lineFocus.cat, lineFocus.sub, detailKey, detailModeMonthly, detailFilter]);
+}, [
+scopeFiltered,
+lineFocus.cat,
+lineFocus.sub,
+detailKey,
+detailModeMonthly,
+detailFilter,
+detailSort,
+]);
 
 const detailTotal = useMemo(() => {
 return detailRows.reduce((a, b) => a + (Number(b.amount) || 0), 0);
@@ -1619,6 +1666,50 @@ boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
 overflow: "hidden",
 display: "flex",
 flexDirection: "column",
+} as React.CSSProperties,
+filterGrid: {
+marginTop: 8,
+display: "grid",
+gridTemplateColumns: wide ? "1fr 1fr" : "1fr",
+gap: 8,
+} as React.CSSProperties,
+
+filterRow: {
+display: "grid",
+gridTemplateColumns: "90px 1fr",
+gap: 8,
+alignItems: "center",
+} as React.CSSProperties,
+
+filterLabel: {
+fontSize: 11,
+color: "#64748b",
+fontWeight: 900,
+} as React.CSSProperties,
+
+inputBase: {
+width: "100%",
+height: 32,
+borderRadius: 10,
+border: "1px solid #cbd5e1",
+padding: "0 10px",
+fontSize: 12,
+fontWeight: 900,
+outline: "none",
+} as React.CSSProperties,
+
+amountRange: {
+display: "grid",
+gridTemplateColumns: "1fr 18px 1fr",
+gap: 6,
+alignItems: "center",
+} as React.CSSProperties,
+
+sortRow: {
+marginTop: 8,
+display: "grid",
+gridTemplateColumns: wide ? "1fr 1fr" : "1fr",
+gap: 8,
 } as React.CSSProperties,
 modalHeader: {
 padding: 10,
@@ -2254,7 +2345,11 @@ if (next) setDetailKey(next);
 </div>
 
 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-{(detailFilter.category || detailFilter.subCategory || detailFilter.registrant) && (
+{(detailFilter.category ||
+detailFilter.subCategory ||
+detailFilter.registrant ||
+detailFilter.amountMin ||
+detailFilter.amountMax) && (
 <button style={styles.tinyBtn} onClick={() => setDetailFilter({})}>
 フィルター解除
 </button>
@@ -2279,6 +2374,7 @@ color: detailModeMonthly
 </div>
 
 <div style={{ fontWeight: 900 }}>合計 {fmtYen(detailTotal)}</div>
+
 </div>
 
 {/* カテゴリ別合計（0は非表示） */}
@@ -2305,7 +2401,128 @@ background: "#fff",
 )}
 </div>
 </div>
+{/* ✅ フィルター */}
+<div style={styles.filterGrid}>
+<div style={styles.filterRow}>
+<div style={styles.filterLabel}>カテゴリ</div>
+<select
+value={detailFilter.category ?? ""}
+onChange={(e) =>
+setDetailFilter((p) => ({
+...p,
+category: e.target.value || undefined,
+subCategory: undefined,
+}))
+}
+style={styles.inputBase}
+>
+<option value="">（指定なし）</option>
+{CATEGORIES.map((c) => (
+<option key={c} value={c}>
+{c}
+</option>
+))}
+</select>
+</div>
 
+<div style={styles.filterRow}>
+<div style={styles.filterLabel}>内訳</div>
+<select
+value={detailFilter.subCategory ?? ""}
+onChange={(e) =>
+setDetailFilter((p) => ({ ...p, subCategory: e.target.value || undefined }))
+}
+style={styles.inputBase}
+>
+<option value="">（指定なし）</option>
+{Array.from(new Set(detailRows.map((r) => r.subCategory))).map((s) => (
+<option key={s} value={s}>
+{s}
+</option>
+))}
+</select>
+</div>
+
+<div style={styles.filterRow}>
+<div style={styles.filterLabel}>金額</div>
+<div style={styles.amountRange}>
+<input
+inputMode="numeric"
+placeholder="min"
+value={detailFilter.amountMin ?? ""}
+onChange={(e) =>
+setDetailFilter((p) => ({ ...p, amountMin: e.target.value }))
+}
+style={styles.inputBase}
+/>
+<div style={{ textAlign: "center" }}>〜</div>
+<input
+inputMode="numeric"
+placeholder="max"
+value={detailFilter.amountMax ?? ""}
+onChange={(e) =>
+setDetailFilter((p) => ({ ...p, amountMax: e.target.value }))
+}
+style={styles.inputBase}
+/>
+</div>
+</div>
+
+<div style={styles.filterRow}>
+<div style={styles.filterLabel}>登録者</div>
+<select
+value={detailFilter.registrant ?? ""}
+onChange={(e) =>
+setDetailFilter((p) => ({
+...p,
+registrant: e.target.value || undefined,
+}))
+}
+style={styles.inputBase}
+>
+<option value="">（指定なし）</option>
+{Array.from(new Set(detailRows.map((r) => r.registrant))).map((name) => (
+<option key={name} value={name}>
+{name}
+</option>
+))}
+</select>
+</div>
+</div>
+
+{/* ✅ ソート */}
+<div style={styles.sortRow}>
+<div style={styles.filterRow}>
+<div style={styles.filterLabel}>並び替え</div>
+<select
+value={detailSort.key}
+onChange={(e) =>
+setDetailSort((p) => ({ ...p, key: e.target.value as any }))
+}
+style={styles.inputBase}
+>
+<option value="date">日付</option>
+<option value="amount">金額</option>
+<option value="category">カテゴリ</option>
+<option value="subCategory">内訳</option>
+<option value="registrant">登録者</option>
+</select>
+</div>
+
+<div style={styles.filterRow}>
+<div style={styles.filterLabel}>順序</div>
+<select
+value={detailSort.dir}
+onChange={(e) =>
+setDetailSort((p) => ({ ...p, dir: e.target.value as any }))
+}
+style={styles.inputBase}
+>
+<option value="asc">昇順</option>
+<option value="desc">降順</option>
+</select>
+</div>
+</div>
 <div style={styles.modalBody}>
 {detailRows.length === 0 ? (
 <div style={{ fontWeight: 900, color: "#64748b", textAlign: "center", padding: 18 }}>
@@ -2835,23 +3052,31 @@ fontWeight="900"
 {/* main line */}
 <path d={dMain} fill="none" stroke="#0b4aa2" strokeWidth="3" />
 
-{/* ✅ dots：土日は塗りも同色 / クリックでモーダル */}
+{/* ✅ dots：タップ判定を広げる（透明ヒット領域 + 見た目の丸） */}
 {showDots &&
 pts.map((p) => {
 // 期間（月別）
 if (isMonthly) {
 return (
-<circle
+<g
 key={p.date}
+style={{ cursor: "pointer" }}
+onClick={() => onPointClick?.(p.date, true)}
+>
+{/* ヒット領域（透明で大きい） */}
+<circle cx={p.x} cy={p.y} r={14} fill="transparent" />
+
+{/* 見た目の丸（今まで通り） */}
+<circle
 cx={p.x}
 cy={p.y}
 r={3.2}
 fill="#0b4aa2"
 stroke="#ffffff"
 strokeWidth={1.5}
-style={{ cursor: "pointer" }}
-onClick={() => onPointClick?.(p.date, true)}
+style={{ pointerEvents: "none" }}
 />
+</g>
 );
 }
 
@@ -2867,37 +3092,59 @@ const isCurrentMonth = month.length >= 7 && month.slice(0, 7) === ymToday();
 const today = new Date().getDate();
 const isToday = isCurrentMonth && dd === today;
 
+// 今日（赤丸）
 if (isToday) {
 return (
-<circle
+<g
 key={p.date}
+style={{ cursor: "pointer" }}
+onClick={() => onPointClick?.(p.date, false)}
+>
+{/* ヒット領域 */}
+<circle cx={p.x} cy={p.y} r={16} fill="transparent" />
+
+{/* 見た目 */}
+<circle
 cx={p.x}
 cy={p.y}
 r={8}
 fill="#ed0b0b"
 stroke="#ffffff"
 strokeWidth={1.8}
-style={{ cursor: "pointer" }}
-onClick={() => onPointClick?.(p.date, false)}
+style={{ pointerEvents: "none" }}
 />
+</g>
 );
 }
 
 const weekendColor = "#fca5a5";
+const fill = isWeekend ? weekendColor : "#0b4aa2";
+const stroke = isWeekend ? weekendColor : "#ffffff";
+const strokeWidth = isWeekend ? 2.0 : 1.5;
+
 return (
-<circle
+<g
 key={p.date}
+style={{ cursor: "pointer" }}
+onClick={() => onPointClick?.(p.date, false)}
+>
+{/* ヒット領域 */}
+<circle cx={p.x} cy={p.y} r={14} fill="transparent" />
+
+{/* 見た目 */}
+<circle
 cx={p.x}
 cy={p.y}
 r={3.2}
-fill={isWeekend ? weekendColor : "#0b4aa2"}
-stroke={isWeekend ? weekendColor : "#ffffff"}
-strokeWidth={isWeekend ? 2.0 : 1.5}
-style={{ cursor: "pointer" }}
-onClick={() => onPointClick?.(p.date, false)}
+fill={fill}
+stroke={stroke}
+strokeWidth={strokeWidth}
+style={{ pointerEvents: "none" }}
 />
+</g>
 );
 })}
+
 
 {/* x labels（元の完成版復元） */}
 {pts.map((p, i) => {
