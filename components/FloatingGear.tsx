@@ -77,7 +77,7 @@ const containerRef = useRef<HTMLDivElement | null>(null);
 const [open, setOpen] = useState(false);
 
 // ドラッグ関連
-const [pos, setPos] = useState<Pos>({ x: 16, y: 16 });
+const [pos, setPos] = useState<Pos>({ x: 0, y: 0 });
 const draggingRef = useRef(false);
 const movedRef = useRef(false);
 const startPointerRef = useRef<{ x: number; y: number } | null>(null);
@@ -88,10 +88,21 @@ const GAP = 10;
 
 // 初回：localStorageから位置復元
 useEffect(() => {
-const saved = safeParsePos(
-typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null
-);
-if (saved) setPos(saved);
+if (typeof window === "undefined") return;
+
+const saved = safeParsePos(localStorage.getItem(STORAGE_KEY));
+
+if (saved) {
+setPos(saved);
+} else {
+// 初回だけ右下に配置
+const w = window.innerWidth;
+const h = window.innerHeight;
+setPos({
+x: w - SIZE - GAP,
+y: h - SIZE - GAP,
+});
+}
 }, []);
 
 // 位置保存
