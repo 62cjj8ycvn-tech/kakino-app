@@ -1371,12 +1371,22 @@ marginBottom: 8,
 
 barRow: {
 display: "grid",
-gridTemplateColumns: "72px 1fr 150px",
+gridTemplateColumns: "72px 1fr 150px 40px",
 alignItems: "center",
 gap: 8,
 padding: "8px 0",
 borderBottom: "1px dashed #e2e8f0",
 } as React.CSSProperties,
+
+warnIcon: {
+textAlign: "center",
+fontSize: 18,
+fontWeight: 900,
+display: "flex",
+justifyContent: "center",
+alignItems: "center",
+} as React.CSSProperties,
+
 
 catName: {
 fontSize: 12,
@@ -1838,11 +1848,7 @@ style={{ ...styles.barRow, cursor: "pointer" }}
 onClick={() => openDrill(x.category)}
 role="button"
 >
-<div style={styles.catName}>
-{x.category}
-{overBudget && <span style={{ marginLeft: 4 }}>⛔️</span>}
-{!overBudget && hasSubOverGuide && <span style={{ marginLeft: 4 }}>⚠️</span>}
-</div>
+<div style={styles.catName}>{x.category}</div>
 
 <div style={styles.barWrap}>
 <div style={{ ...styles.barBudget, width: `${budgetW}%` }} />
