@@ -238,6 +238,7 @@ const [filterCategory, setFilterCategory] = useState<string>("");
 const [filterSubCategory, setFilterSubCategory] = useState<string>("");
 const [filterSource, setFilterSource] = useState<string>("");
 const [filterRegistrant, setFilterRegistrant] = useState<string>("");
+const [sortDir, setSortDir] = useState<"desc" | "asc">("desc"); // 並び順（初期：新しい順）
 
 const filterActive = useMemo(() => {
 return Boolean(
@@ -335,27 +336,23 @@ load(month);
 
 // filtered rows
 const filteredRows = useMemo(() => {
-return rows.filter((r) => {
+const filtered = rows.filter((r) => {
 if (filterRegistrant && r.registrant !== filterRegistrant) return false;
 if (filterCategory && r.category !== filterCategory) return false;
 
 if (filterSubCategory) {
 if (filterSubCategory === FREE_LABEL) {
 const cat = r.category;
-
-// ✅ ここで cat を Category に絞る
 if (!cat || !isCategory(cat)) return false;
 
 const master = SUBCATEGORIES[cat] ?? [];
 const masterWithoutFree = master.filter((s) => s !== FREE_LABEL);
 
-// ✅ FREE_LABEL = 「マスタに無い内訳」だけ通す
 if (masterWithoutFree.includes(r.subCategory)) return false;
 if (!r.subCategory || r.subCategory === FREE_LABEL) return false;
 } else {
 if (r.subCategory !== filterSubCategory) return false;
 }
-
 }
 
 if (filterSource && r.source !== filterSource) return false;
@@ -375,6 +372,18 @@ if (Number.isFinite(mx) && abs > mx) return false;
 
 return true;
 });
+
+// 並び替え：基本は日付で（同日なら金額で軽く安定）
+filtered.sort((a, b) => {
+if (a.date === b.date) {
+return sortDir === "asc"
+? (Number(a.amount) || 0) - (Number(b.amount) || 0)
+: (Number(b.amount) || 0) - (Number(a.amount) || 0);
+}
+return sortDir === "asc" ? (a.date < b.date ? -1 : 1) : (a.date < b.date ? 1 : -1);
+});
+
+return filtered;
 }, [
 rows,
 filterRegistrant,
@@ -385,6 +394,7 @@ filterDateFrom,
 filterDateTo,
 filterAmountMin,
 filterAmountMax,
+sortDir,
 ]);
 
 const total = useMemo(
@@ -1229,7 +1239,14 @@ role="button"
 >
 <div style={styles.rowAccent(r.category)} />
 <div style={styles.cellCenter}>{r.date.slice(5).replace("-", "/")}</div>
-<div style={styles.cellCenter}>{fmtYen(r.amount)}</div>
+<div
+style={{
+...styles.cellCenter,
+color: (Number(r.amount) || 0) < 0 ? "#dc2626" : (styles.cellCenter as any).color,
+}}
+>
+{fmtYen(r.amount)}
+</div>
 <div style={styles.cellCenter}>{r.category}</div>
 <div style={styles.cellCenter}>{r.subCategory}</div>
 <div style={styles.cellLeft}>{r.source}</div>
@@ -1466,6 +1483,42 @@ placeholder="任意"
 </div>
 
 <div style={styles.modalBody}>
+    {/* 並び替え（共通） */}
+<div style={{ marginBottom: 10 }}>
+<div style={styles.label}>並び順</div>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+<button
+type="button"
+onClick={() => setSortDir("desc")}
+style={{
+height: 36,
+borderRadius: 10,
+border: "1px solid " + (sortDir === "desc" ? "#93c5fd" : "#cbd5e1"),
+background: sortDir === "desc" ? "#dbeafe" : "#fff",
+color: "#0b4aa2",
+fontWeight: 900,
+cursor: "pointer",
+}}
+>
+降順（新しい順）
+</button>
+<button
+type="button"
+onClick={() => setSortDir("asc")}
+style={{
+height: 36,
+borderRadius: 10,
+border: "1px solid " + (sortDir === "asc" ? "#93c5fd" : "#cbd5e1"),
+background: sortDir === "asc" ? "#dbeafe" : "#fff",
+color: "#0b4aa2",
+fontWeight: 900,
+cursor: "pointer",
+}}
+>
+昇順（古い順）
+</button>
+</div>
+</div>
 {filterHeader === "date" && (
 <div>
 <div style={styles.filterHint}>日付の範囲を指定できます</div>
@@ -1540,17 +1593,6 @@ style={styles.input}
 ))}
 </select>
 
-<div style={{ marginTop: 10 }}>
-<div style={styles.label}>登録者</div>
-<select value={filterRegistrant} onChange={(e) => setFilterRegistrant(e.target.value)} style={styles.input}>
-<option value="">（指定なし）</option>
-{REGISTRANTS.map((r) => (
-<option key={r} value={r}>
-{r}
-</option>
-))}
-</select>
-</div>
 </div>
 )}
 
@@ -1609,17 +1651,6 @@ disabled={!filterCategory}
 ))}
 </select>
 
-<div style={{ marginTop: 10 }}>
-<div style={styles.label}>登録者</div>
-<select value={filterRegistrant} onChange={(e) => setFilterRegistrant(e.target.value)} style={styles.input}>
-<option value="">（指定なし）</option>
-{REGISTRANTS.map((r) => (
-<option key={r} value={r}>
-{r}
-</option>
-))}
-</select>
-</div>
 </div>
 )}
 </div>
