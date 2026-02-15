@@ -1384,9 +1384,10 @@ borderBottom: "1px dashed #e2e8f0",
 rightBox: {
 display: "flex",
 flexDirection: "column",
-alignItems: "flex-end",
+alignItems: "center",
 justifyContent: "center",
-textAlign: "right",
+textAlign: "center",
+width: "100%",
 fontVariantNumeric: "tabular-nums",
 } as React.CSSProperties,
 
@@ -1395,8 +1396,9 @@ warnIcon: {
 display: "flex",
 justifyContent: "flex-end",
 alignItems: "center",
-fontSize: 18,
+fontSize: 12,
 fontWeight: 900,
+opacity:0.9,
 height: "100%",
 paddingRight: 2, // 右端にギリ寄せ
 } as React.CSSProperties,
@@ -1464,6 +1466,7 @@ borderLeft: "2px dotted #94a3b8",
 rightActual: {
 fontSize: 12,
 fontWeight: 900,
+textAlign: "center",
 color: "#0f172a",
 lineHeight: 1.1,
 } as React.CSSProperties,
@@ -1472,6 +1475,7 @@ rightGuide: {
 marginTop: 3,
 fontSize: 11,
 fontWeight: 900,
+textAlign: "center",
 lineHeight: 1.1,
 } as React.CSSProperties,
 
@@ -1518,11 +1522,19 @@ flexWrap: "wrap",
 
 subRow: {
 display: "grid",
-gridTemplateColumns: "1fr 110px 90px",
+gridTemplateColumns: "1fr 110px 90px 28px", // ← 4列目追加
 gap: 8,
 padding: "7px 0",
 borderBottom: "1px dashed #e2e8f0",
 alignItems: "center",
+} as React.CSSProperties,
+
+subWarnIcon: {
+display: "flex",
+justifyContent: "flex-end",
+alignItems: "center",
+fontSize: 14,
+paddingRight: 2,
 } as React.CSSProperties,
 
 subName: {
@@ -1893,7 +1905,7 @@ color: (budget === 0 && actual > 0) || actual > budget ? "#dc2626" : "#0f172a",
 </div>
 
 <div style={{ ...styles.rightGuide, color: gInfo.color }}>
-目安{gInfo.text}
+{gInfo.text}
 </div>
 </div>
 
@@ -1963,7 +1975,9 @@ return { guideline: g, diff, color: dInfo.color, text: dInfo.text };
 // 単月：従来（0予算は¥0固定）
 return subGuidelineDiffInfo({ month, subBudget, subActual, guideFactor });
 })();
-
+const subOverBudget = subBudget > 0 && subActual > subBudget;
+const subOverGuide = subBudget > 0 && !subOverBudget && subActual > info.guideline;
+const subIcon = subOverBudget ? "⛔️" : subOverGuide ? "⚠️" : "";
 return (
 <div
 key={s.subCategory}
@@ -1981,27 +1995,20 @@ role="button"
 <div style={{ ...styles.subName, color: drillSub === s.subCategory ? "#0b4aa2" : "#0f172a" }}>
 {s.subCategory}
 </div>
+
 <div style={styles.subActual}>{fmtYen(s.actual)}</div>
+
 <div
 style={{
 ...styles.subGuide,
 color: subBudget <= 0 ? "#0f172a" : info.color,
 }}
 >
-{subBudget <= 0 ? (
-"-"
-) : (
-<>
-{info.text}
-{/* ⛔️：予算超過（内訳予算がある前提） */}
-{subActual > subBudget && <span style={{ marginLeft: 4 }}>⛔️</span>}
-{/* ⚠️：目安超過（ただし予算超過じゃない時） */}
-{subActual <= subBudget && subActual > info.guideline && (
-<span style={{ marginLeft: 4 }}>⚠️</span>
-)}
-</>
-)}
+{subBudget <= 0 ? "-" : info.text}
 </div>
+
+{/* ✅ 4列目：右端アイコン */}
+<div style={styles.subWarnIcon}>{subIcon}</div>
 </div>
 );
 })}
