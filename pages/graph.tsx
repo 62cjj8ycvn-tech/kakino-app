@@ -1371,21 +1371,36 @@ marginBottom: 8,
 
 barRow: {
 display: "grid",
-gridTemplateColumns: "72px 1fr 120px 40px",
+// ✅ 右端にアイコン専用列を用意（右端固定）
+// ✅ 固定幅を減らしてバーを長くする
+gridTemplateColumns: "60px minmax(0, 1fr) 108px 26px",
 alignItems: "center",
-gap: 8,
+gap: 6,
 padding: "8px 0",
 borderBottom: "1px dashed #e2e8f0",
 } as React.CSSProperties,
 
+// ✅ 右側（実績/目安）は2段だけ。右寄せにする
+rightBox: {
+display: "flex",
+flexDirection: "column",
+alignItems: "flex-end",
+justifyContent: "center",
+textAlign: "right",
+fontVariantNumeric: "tabular-nums",
+} as React.CSSProperties,
+
+// ✅ アイコンは4列目（右端）に固定、右寄せ＆中央揃え
 warnIcon: {
 display: "flex",
-justifyContent: "center",
+justifyContent: "flex-end",
 alignItems: "center",
 fontSize: 18,
 fontWeight: 900,
 height: "100%",
+paddingRight: 2, // 右端にギリ寄せ
 } as React.CSSProperties,
+
 
 
 catName: {
@@ -1876,8 +1891,6 @@ width: `${clamp(overW, 0, 100 - withinW)}%`,
 </div>
 
 <div style={styles.rightBox}>
-{/* ✅ 左：2段テキスト */}
-<div>
 <div
 style={{
 ...styles.rightActual,
@@ -1890,14 +1903,13 @@ color: (budget === 0 && actual > 0) || actual > budget ? "#dc2626" : "#0f172a",
 <div style={{ ...styles.rightGuide, color: gInfo.color }}>
 目安{gInfo.text}
 </div>
-
 </div>
 
-{/* ✅ 右：アイコン（右隣に固定） */}
+{/* ✅ 4列目：アイコンを右端固定 */}
 <div style={styles.warnIcon}>
 {overBudget ? "⛔️" : hasSubOverGuide ? "⚠️" : ""}
 </div>
-</div>
+
 </div>
 );
 })}
