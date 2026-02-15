@@ -525,7 +525,57 @@ if (scope === "total") return rowsMonth;
 if (scope === "shoya") return rowsMonth.filter((r) => isShoyaSource(r.source));
 return rowsMonth.filter((r) => isMiuSource(r.source));
 }, [rowsMonth, scope]);
+// ✅ カテゴリごとの「内訳 実績集計」
+// - 娯楽費は「将哉 / 未有」を registrant で集計（あなたのsubAgg仕様と同じ）
+// - それ以外は「自由入力」をまとめて "自由入力" 扱い（あなたのsubAgg仕様と同じ）
+// - 文字の揺れ対策で trim() する
+function subAggForCategorySafe(category: string) {
+// 予防：category が空でも落とさない
+const cat = String(category ?? "");
 
+// ✅ 娯楽費は特別ルール（あなたの subAgg と同じ）
+if (cat === "娯楽費") {
+const shoya = scopeFiltered
+.filter(
+(r) =>
+String(r.category ?? "") === "娯楽費" &&
+(String(r.registrant ?? "").includes("将") || String(r.registrant ?? "").includes("将哉"))
+)
+.reduce((a, b) => a + (Number(b.amount) || 0), 0);
+
+const miu = scopeFiltered
+.filter(
+(r) =>
+String(r.category ?? "") === "娯楽費" &&
+String(r.registrant ?? "").includes("未有")
+)
+.reduce((a, b) => a + (Number(b.amount) || 0), 0);
+
+return [
+{ subCategory: "将哉", actual: shoya },
+{ subCategory: "未有", actual: miu },
+];
+}
+
+const FREE = "自由入力";
+
+// official 内訳（自由入力は除外）
+const officialRaw = isCategory(cat) ? (SUBCATEGORIES[cat] ?? []) : [];
+const official = officialRaw.filter((s) => s !== FREE).map((s) => String(s).trim());
+
+// 実績を map 集計
+const m = new Map<string, number>();
+
+for (const r of scopeFiltered) {
+if (String(r.category ?? "") !== cat) continue;
+
+const raw = String(r.subCategory ?? "").trim();
+const key = official.includes(raw) ? raw : FREE; // ✅ 自由入力まとめ
+m.set(key, (m.get(key) ?? 0) + (Number(r.amount) || 0));
+}
+
+return Array.from(m.entries()).map(([subCategory, actual]) => ({ subCategory, actual }));
+}
 // totals
 const totalActual = useMemo(() => scopeFiltered.reduce((a, b) => a + (Number(b.amount) || 0), 0), [
 scopeFiltered,
@@ -1729,6 +1779,40 @@ onClick={forceReload}
 categoryAggVisible.map((x) => {
 const actual = Number(x.actual) || 0;
 const budget = Number(x.budget) || 0;
+// ========= 追加：カテゴリ警告判定（落ちない版） =========
+const overBudget = budget > 0 && actual > budget; // ⛔️
+
+let hasSubOverGuide = false; // ⚠️（カテゴリは超過してないが、内訳のどれかが目安超過）
+
+// ※カテゴリが予算超過してる時は⚠️不要（⛔️のみ）
+if (!overBudget) {
+const subMap = (subBudgets?.[x.category] ?? {}) as Record<string, number>;
+
+// 内訳実績（娯楽費/自由入力含め、仕様に合わせて集計）
+const actualSubs = subAggForCategorySafe(x.category);
+
+for (const s of actualSubs) {
+const sb = Number(subMap?.[s.subCategory] ?? 0);
+
+// ✅ 内訳に予算が無いなら判定しない（あなたの要件）
+if (!sb || sb <= 0) continue;
+
+// ✅ “目安” は 目安ボタン(guideFull)と連動（guideFactor使用）
+const guidelineSub = rangeMode
+? guidelineTotalForSubInRange(x.category, s.subCategory)
+: subGuidelineDiffInfo({
+month,
+subBudget: sb,
+subActual: 0, // guideline だけ欲しいので actual は0でOK
+guideFactor,
+}).guideline;
+
+if (Number(s.actual) > Number(guidelineSub)) {
+hasSubOverGuide = true;
+break;
+}
+}
+}
 
 const baseline = budget > 0 ? Math.max(budget, actual) : Math.max(actual, 1);
 const budgetW = budget > 0 ? (budget / baseline) * 100 : 0;
@@ -1754,7 +1838,11 @@ style={{ ...styles.barRow, cursor: "pointer" }}
 onClick={() => openDrill(x.category)}
 role="button"
 >
-<div style={styles.catName}>{x.category}</div>
+<div style={styles.catName}>
+{x.category}
+{overBudget && <span style={{ marginLeft: 4 }}>⛔️</span>}
+{!overBudget && hasSubOverGuide && <span style={{ marginLeft: 4 }}>⚠️</span>}
+</div>
 
 <div style={styles.barWrap}>
 <div style={{ ...styles.barBudget, width: `${budgetW}%` }} />
@@ -1875,7 +1963,19 @@ style={{
 color: subBudget <= 0 ? "#0f172a" : info.color,
 }}
 >
-{subBudget <= 0 ? "-" : info.text}
+{subBudget <= 0 ? (
+"-"
+) : (
+<>
+{info.text}
+{/* ⛔️：予算超過（内訳予算がある前提） */}
+{subActual > subBudget && <span style={{ marginLeft: 4 }}>⛔️</span>}
+{/* ⚠️：目安超過（ただし予算超過じゃない時） */}
+{subActual <= subBudget && subActual > info.guideline && (
+<span style={{ marginLeft: 4 }}>⚠️</span>
+)}
+</>
+)}
 </div>
 </div>
 );
