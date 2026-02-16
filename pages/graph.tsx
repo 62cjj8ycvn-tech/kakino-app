@@ -73,6 +73,7 @@ amount: number;
 category: string;
 subCategory: string;
 source: string;
+memo?: string;
 };
 
 type IncomeDoc = {
