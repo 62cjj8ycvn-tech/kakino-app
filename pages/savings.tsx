@@ -123,7 +123,9 @@ return `${month}__${registrant}`;
 }
 
 /**
-* categoryBudgets / items / subBudgets合計 の最大を採用
+* ✅ budgets doc 正規化（budget/graph と同じルール）
+* - 内訳が1円以上あるカテゴリは「内訳合計」をカテゴリ合計として扱う
+* - 内訳が無いカテゴリは categoryBudgets / items の最大
 */
 function normalizeCategoryBudgets(
 docData: BudgetDoc | null,
@@ -138,11 +140,19 @@ const fromItems = (docData?.items ?? {}) as Record<string, number>;
 for (const c of categories) {
 const a = Number(fromCategoryBudgets?.[c] ?? 0);
 const b = Number(fromItems?.[c] ?? 0);
+
 const sMap = sub?.[c] ?? {};
 const sSum = Object.values(sMap).reduce((x, y) => x + (Number(y) || 0), 0);
-const best = Math.max(a, b, sSum);
+
+// ✅ 内訳が入ってるなら内訳合計を優先
+if (sSum > 0) {
+cat[c] = sSum;
+} else {
+const best = Math.max(a, b);
 cat[c] = Number.isFinite(best) ? best : 0;
 }
+}
+
 return { cat, sub };
 }
 
