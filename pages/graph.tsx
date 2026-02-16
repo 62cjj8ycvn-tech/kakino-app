@@ -1206,50 +1206,6 @@ setPickerOpen(true);
 
 const closePicker = () => setPickerOpen(false);
 
-// 選択肢を作る（いま見えてる明細からユニーク抽出）
-const pickerOptions = useMemo(() => {
-if (pickerKind === "category") {
-// カテゴリはマスター固定
-return [{ label: "（指定なし）", value: "" }, ...CATEGORIES.map((c) => ({ label: c, value: c }))];
-}
-
-if (pickerKind === "subCategory") {
-const uniq = Array.from(new Set(detailRows.map((r) => r.subCategory))).filter(Boolean);
-return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
-}
-
-if (pickerKind === "registrant") {
-const uniq = Array.from(new Set(detailRows.map((r) => r.registrant))).filter(Boolean);
-return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
-}
-
-// amount（プリセット）
-return [
-{ label: "（指定なし）", value: { min: "", max: "" } },
-{ label: "〜 ¥999", value: { min: "", max: "999" } },
-{ label: "¥1,000 〜 ¥4,999", value: { min: "1000", max: "4999" } },
-{ label: "¥5,000 〜 ¥9,999", value: { min: "5000", max: "9999" } },
-{ label: "¥10,000 〜 ¥19,999", value: { min: "10000", max: "19999" } },
-{ label: "¥20,000 〜", value: { min: "20000", max: "" } },
-];
-}, [pickerKind, detailRows]);
-
-const applyPickerValue = (v: any) => {
-if (pickerKind === "category") {
-setDetailFilter((p) => ({ ...p, category: String(v || ""), subCategory: "" }));
-} else if (pickerKind === "subCategory") {
-setDetailFilter((p) => ({ ...p, subCategory: String(v || "") }));
-} else if (pickerKind === "registrant") {
-setDetailFilter((p) => ({ ...p, registrant: String(v || "") }));
-} else {
-// amount
-const min = v?.min ?? "";
-const max = v?.max ?? "";
-setDetailFilter((p) => ({ ...p, amountMin: String(min), amountMax: String(max) }));
-}
-
-closePicker();
-};
 
 
 // モーダル内ソート（全て昇順/降順可能）
@@ -1333,6 +1289,50 @@ detailModeMonthly,
 detailFilter,
 detailSort,
 ]);
+// 選択肢を作る（いま見えてる明細からユニーク抽出）
+const pickerOptions = useMemo(() => {
+if (pickerKind === "category") {
+// カテゴリはマスター固定
+return [{ label: "（指定なし）", value: "" }, ...CATEGORIES.map((c) => ({ label: c, value: c }))];
+}
+
+if (pickerKind === "subCategory") {
+const uniq = Array.from(new Set(detailRows.map((r) => r.subCategory))).filter(Boolean);
+return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
+}
+
+if (pickerKind === "registrant") {
+const uniq = Array.from(new Set(detailRows.map((r) => r.registrant))).filter(Boolean);
+return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
+}
+
+// amount（プリセット）
+return [
+{ label: "（指定なし）", value: { min: "", max: "" } },
+{ label: "〜 ¥999", value: { min: "", max: "999" } },
+{ label: "¥1,000 〜 ¥4,999", value: { min: "1000", max: "4999" } },
+{ label: "¥5,000 〜 ¥9,999", value: { min: "5000", max: "9999" } },
+{ label: "¥10,000 〜 ¥19,999", value: { min: "10000", max: "19999" } },
+{ label: "¥20,000 〜", value: { min: "20000", max: "" } },
+];
+}, [pickerKind, detailRows]);
+
+const applyPickerValue = (v: any) => {
+if (pickerKind === "category") {
+setDetailFilter((p) => ({ ...p, category: String(v || ""), subCategory: "" }));
+} else if (pickerKind === "subCategory") {
+setDetailFilter((p) => ({ ...p, subCategory: String(v || "") }));
+} else if (pickerKind === "registrant") {
+setDetailFilter((p) => ({ ...p, registrant: String(v || "") }));
+} else {
+// amount
+const min = v?.min ?? "";
+const max = v?.max ?? "";
+setDetailFilter((p) => ({ ...p, amountMin: String(min), amountMax: String(max) }));
+}
+
+closePicker();
+};
 
 const detailTotal = useMemo(() => {
 return detailRows.reduce((a, b) => a + (Number(b.amount) || 0), 0);
