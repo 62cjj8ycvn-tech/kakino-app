@@ -376,6 +376,10 @@ nextIncome[k] = value;
 else if (kind === "cat") {
 const cat = parts[1];
 if (!cat) continue;
+
+// ✅ 一括でカテゴリ合計を上書きする時も内訳をクリア
+nextSub[cat] = {};
+
 nextCat[cat] = value;
 }
 
@@ -482,8 +486,29 @@ nextIncome[editTarget.key] = Math.round(val);
 }
 
 else if (editTarget.kind === "category") {
-nextCat[editTarget.category] = Math.round(val);
+const cat = editTarget.category;
+
+// そのカテゴリに内訳が入ってるかチェック（1円でも入ってたら true）
+const subSum = Object.values(nextSub?.[cat] ?? {}).reduce(
+(a, b) => a + (Number(b) || 0),
+0
+);
+const hasSubs = subSum >= 1;
+
+// 内訳があるなら確認して、OKなら内訳を削除してカテゴリ合計で上書き
+if (hasSubs) {
+const ok = confirm(
+"このカテゴリには内訳が登録されています。\nカテゴリ合計で上書きすると内訳は削除されます。\n続けますか？"
+);
+if (!ok) return;
 }
+
+nextCat[cat] = Math.round(val);
+
+// 🔥 重要：カテゴリ合計で運用したいので内訳を削除する
+nextSub[cat] = {};
+}
+
 
 else if (editTarget.kind === "sub") {
 const cat = editTarget.category;
