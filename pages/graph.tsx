@@ -2159,7 +2159,7 @@ justifyContent: "space-between",
 alignItems: "center",
 gap: 8,
 } as React.CSSProperties,
-modalBody: {
+modalBodyScroll: {
 padding: 10,
 overflow: "auto",
 } as React.CSSProperties,
