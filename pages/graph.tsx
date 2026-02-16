@@ -1,8 +1,18 @@
 // pages/graph.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import {
+collection,
+doc,
+getDoc,
+getDocs,
+query,
+where,
+updateDoc,
+deleteDoc,
+serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { CATEGORIES, SUBCATEGORIES } from "../lib/masterData";
+import { CATEGORIES, SUBCATEGORIES, EXPENSE_SOURCES, REGISTRANTS } from "../lib/masterData";
 type Category = (typeof CATEGORIES)[number];
 
 function isCategory(x: any): x is Category {
@@ -55,6 +65,7 @@ return { text: `${mm}/${dd}(${JP[dow]})`, isWeekend: dow === 0 || dow === 6 };
 */
 
 type ExpenseDoc = {
+id: string;
 registrant: string;
 date: string;
 month: string;
@@ -131,6 +142,24 @@ function fmtYen(n: number) {
 const r = Math.round(Number(n) || 0);
 const sign = r < 0 ? "▲" : "";
 return `${sign}¥${Math.abs(r).toLocaleString("ja-JP")}`;
+}
+
+const FREE_LABEL = "自由入力";
+
+function digitsOnly(s: string) {
+return (s || "").replace(/[^\d]/g, "");
+}
+function formatWithCommaDigits(s: string) {
+const d = digitsOnly(s);
+if (!d) return "";
+return new Intl.NumberFormat("ja-JP").format(Number(d));
+}
+function parseAmountFromText(amountText: string, isMinus: boolean) {
+const d = digitsOnly(amountText);
+if (!d) return NaN;
+const n = Number(d);
+if (!Number.isFinite(n)) return NaN;
+return isMinus ? -n : n;
 }
 
 function diffStyleAndText(diff: number) {
@@ -373,7 +402,9 @@ const snap = await getDocs(qExp);
 
 snap.docs.forEach((d) => {
 const raw = d.data() as any;
+
 const row: ExpenseDoc = {
+id: d.id, // ✅ docId
 registrant: String(raw.registrant ?? ""),
 date: String(raw.date ?? ""),
 month: String(raw.month ?? ""),
@@ -381,6 +412,7 @@ amount: Number(raw.amount ?? 0),
 category: String(raw.category ?? ""),
 subCategory: String(raw.subCategory ?? ""),
 source: String(raw.source ?? ""),
+memo: raw.memo != null ? String(raw.memo) : "",
 };
 
 const ym = row.month;
@@ -1174,6 +1206,197 @@ const [detailOpen, setDetailOpen] = useState(false);
 const [detailKey, setDetailKey] = useState<string>(""); // "YYYY-MM-DD" or "YYYY-MM"
 const [detailModeMonthly, setDetailModeMonthly] = useState(false);
 
+// ====== 明細行タップ：編集/削除モーダル（支出ページと同UI） ======
+const [editOpen, setEditOpen] = useState(false);
+const [editingId, setEditingId] = useState<string | null>(null);
+
+// form（支出ページ互換）
+const [registrant, setRegistrant] = useState<string>(() => {
+if (REGISTRANTS.includes("将哉")) return "将哉";
+if (REGISTRANTS.length) return REGISTRANTS[0];
+return "";
+});
+const [date, setDate] = useState<string>("");
+const [amountText, setAmountText] = useState<string>("");
+const [isMinus, setIsMinus] = useState<boolean>(false);
+const [category, setCategory] = useState<string>("");
+const [subCategorySelect, setSubCategorySelect] = useState<string>("");
+const [source, setSource] = useState<string>("");
+const [memo, setMemo] = useState<string>("");
+
+// validation（支出ページ互換）
+const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+const openEdit = (r: ExpenseDoc) => {
+setEditingId(r.id);
+setTouched({});
+
+setRegistrant(String(r.registrant ?? ""));
+setDate(String(r.date ?? ""));
+
+const amt = Number(r.amount) || 0;
+setIsMinus(amt < 0);
+setAmountText(formatWithCommaDigits(String(Math.abs(amt))));
+
+const cat = String(r.category ?? "");
+setCategory(cat);
+
+// 「自由入力」判定：マスターに無い内訳は自由入力扱い（支出ページと同じ思想）
+const list = isCategory(cat) ? (SUBCATEGORIES[cat] ?? []) : [];
+if (list.includes(String(r.subCategory ?? ""))) {
+setSubCategorySelect(String(r.subCategory ?? ""));
+setMemo(String(r.memo ?? "")); // 通常メモ
+} else {
+setSubCategorySelect(FREE_LABEL);
+setMemo(String(r.subCategory ?? "")); // 自由入力文字列は memo欄で編集
+}
+
+setSource(String(r.source ?? ""));
+setEditOpen(true);
+};
+
+const closeEdit = () => {
+setEditOpen(false);
+setEditingId(null);
+};
+
+// subCategory（保存用）
+const finalSubCategory = useMemo(() => {
+if (!subCategorySelect) return "";
+if (subCategorySelect === FREE_LABEL) return (memo || "").trim();
+return subCategorySelect;
+}, [subCategorySelect, memo]);
+
+const amountValue = useMemo(() => {
+return parseAmountFromText(amountText, isMinus);
+}, [amountText, isMinus]);
+
+const missing = useMemo(() => {
+const m: Record<string, boolean> = {};
+m.registrant = !registrant;
+m.date = !date;
+m.amount = !amountText || !Number.isFinite(amountValue);
+m.category = !category;
+m.subCategory = !finalSubCategory;
+m.source = !source;
+return m;
+}, [registrant, date, amountText, amountValue, category, finalSubCategory, source]);
+
+const hasMissing = useMemo(() => Object.values(missing).some(Boolean), [missing]);
+
+const markAllTouched = () => {
+setTouched({
+registrant: true,
+date: true,
+amount: true,
+category: true,
+subCategory: true,
+source: true,
+});
+};
+
+const onChangeAmount = (v: string) => {
+setAmountText(formatWithCommaDigits(v));
+if (!touched.amount) setTouched((t) => ({ ...t, amount: true }));
+};
+
+const toggleMinus = () => {
+setIsMinus((p) => !p);
+if (!touched.amount) setTouched((t) => ({ ...t, amount: true }));
+};
+
+const onSaveEdit = async () => {
+if (!editingId) return;
+
+if (hasMissing) {
+markAllTouched();
+alert("未入力の必須項目があります。赤枠の項目を入力してください。");
+return;
+}
+
+if (!Number.isFinite(amountValue) || amountValue === 0) {
+setTouched((t) => ({ ...t, amount: true }));
+alert("金額が不正です（0不可・整数のみ）。");
+return;
+}
+
+const nextDate = String(date ?? "");
+if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+setTouched((t) => ({ ...t, date: true }));
+alert("日付が不正です（YYYY-MM-DD）");
+return;
+}
+
+const nextMonth = nextDate.slice(0, 7);
+
+// rowsMonth から対象を拾う（idで一致）
+const current = rowsMonth.find((x) => x.id === editingId);
+if (!current) {
+alert("対象の明細が見つかりませんでした。");
+return;
+}
+
+const nextRow: ExpenseDoc = {
+...current,
+registrant,
+date: nextDate,
+month: nextMonth,
+amount: Math.trunc(amountValue),
+category,
+subCategory: finalSubCategory,
+source,
+memo: memo || "",
+};
+
+try {
+await updateDoc(doc(db, "expenses", editingId), {
+registrant: nextRow.registrant,
+date: nextRow.date,
+month: nextRow.month,
+amount: nextRow.amount,
+category: nextRow.category,
+subCategory: nextRow.subCategory,
+source: nextRow.source,
+memo: nextRow.memo ?? "",
+updatedAt: serverTimestamp(),
+});
+
+// state更新
+setRowsMonth((prev) => prev.map((r) => (r.id === nextRow.id ? nextRow : r)));
+
+// ✅ キャッシュは「旧月/新月」を消す（安全策）
+expensesCacheByMonth.delete(current.month);
+expensesCacheByMonth.delete(nextRow.month);
+
+closeEdit();
+} catch (e) {
+console.error(e);
+alert("保存に失敗しました。");
+}
+};
+
+const onDeleteEdit = async () => {
+if (!editingId) return;
+
+const current = rowsMonth.find((x) => x.id === editingId);
+if (!current) return;
+
+const ok = confirm("この明細を削除しますか？");
+if (!ok) return;
+
+try {
+await deleteDoc(doc(db, "expenses", editingId));
+
+setRowsMonth((prev) => prev.filter((r) => r.id !== editingId));
+expensesCacheByMonth.delete(current.month);
+
+closeEdit();
+} catch (e) {
+console.error(e);
+alert("削除に失敗しました。");
+}
+};
+
 // モーダル内フィルタ（カテゴリ/内訳/金額範囲/登録者）
 type DetailFilter = {
 category: string; // "" = 未指定
@@ -1371,6 +1594,144 @@ const subLabelSize = 9;
 const subValueSize = 10;
 
 return {
+
+overlay: {
+position: "fixed",
+inset: 0,
+background: "rgba(2,6,23,0.45)",
+zIndex: 80,
+display: "flex",
+alignItems: "flex-end",
+justifyContent: "center",
+padding: 10,
+} as React.CSSProperties,
+
+modal: {
+width: "100%",
+maxWidth: 680,
+background: "#fff",
+borderRadius: 16,
+border: "1px solid #e5e7eb",
+boxShadow: "0 18px 45px rgba(0,0,0,0.25)",
+overflow: "hidden",
+} as React.CSSProperties,
+
+modalHead: {
+display: "flex",
+alignItems: "center",
+justifyContent: "space-between",
+padding: "10px 12px",
+background: "linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)",
+borderBottom: "1px solid #dbeafe",
+} as React.CSSProperties,
+
+modalTitle: { fontSize: 14, fontWeight: 900, color: "#0b4aa2" } as React.CSSProperties,
+modalBody: { padding: 12 } as React.CSSProperties,
+
+grid: {
+display: "grid",
+gridTemplateColumns: wide ? "1fr 1fr" : "1fr",
+gap: 10,
+} as React.CSSProperties,
+
+label: { fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 4 } as React.CSSProperties,
+
+input: {
+width: "100%",
+height: 36,
+borderRadius: 10,
+border: "1px solid #cbd5e1",
+padding: "0 10px",
+fontSize: 13,
+background: "#fff",
+outline: "none",
+} as React.CSSProperties,
+
+errorBorder: {
+border: "2px solid #dc2626",
+background: "#fff5f5",
+} as React.CSSProperties,
+
+amountRow: {
+display: "grid",
+gridTemplateColumns: "1fr 44px",
+gap: 6,
+alignItems: "center",
+} as React.CSSProperties,
+
+minusBtn: (active: boolean): React.CSSProperties => ({
+height: 36,
+borderRadius: 10,
+border: "1px solid " + (active ? "#fecaca" : "#cbd5e1"),
+background: active ? "#fee2e2" : "#fff",
+color: active ? "#b91c1c" : "#0b4aa2",
+fontWeight: 900,
+cursor: "pointer",
+fontSize: 12,
+}),
+
+regCardRow: {
+display: "grid",
+gridTemplateColumns: "1fr 1fr",
+gap: 8,
+marginBottom: 10,
+} as React.CSSProperties,
+
+regCard: (active: boolean): React.CSSProperties => ({
+borderRadius: 14,
+padding: 10,
+border: "1px solid " + (active ? "#93c5fd" : "#e2e8f0"),
+background: active ? "linear-gradient(180deg, #dbeafe 0%, #ffffff 100%)" : "#ffffff",
+cursor: "pointer",
+userSelect: "none",
+fontWeight: 900,
+color: active ? "#0b4aa2" : "#334155",
+textAlign: "center",
+}),
+
+modalFoot: {
+display: "flex",
+gap: 8,
+padding: 12,
+borderTop: "1px solid #e5e7eb",
+justifyContent: "flex-end",
+background: "#fff",
+} as React.CSSProperties,
+
+btnDanger: {
+height: 36,
+padding: "0 12px",
+borderRadius: 10,
+border: "1px solid #fecaca",
+background: "#fee2e2",
+color: "#b91c1c",
+fontWeight: 900,
+cursor: "pointer",
+} as React.CSSProperties,
+
+btnPrimary: {
+height: 36,
+padding: "0 12px",
+borderRadius: 10,
+border: "1px solid #93c5fd",
+background: "#1d4ed8",
+color: "#fff",
+fontWeight: 900,
+cursor: "pointer",
+} as React.CSSProperties,
+
+btnSub: {
+height: 36,
+padding: "0 12px",
+borderRadius: 10,
+border: "1px solid #cbd5e1",
+background: "#fff",
+
+color: "#0b4aa2",
+fontWeight: 900,
+cursor: "pointer",
+} as React.CSSProperties,
+
 page: {
 padding: 12,
 maxWidth: 1100,
@@ -2546,19 +2907,209 @@ background: "#fff",
 </div>
 
 {detailRows.map((r, idx) => (
-<div key={idx} style={styles.tableRow}>
+<div
+key={r.id || idx}
+style={{ ...styles.tableRow, cursor: "pointer" }}
+onClick={() => openEdit(r)}
+role="button"
+>
 <div style={{ color: "#0f172a" }}>{r.category}</div>
 <div style={{ color: "#0f172a" }}>{r.subCategory}</div>
 <div>{fmtYen(r.amount)}</div>
 <div style={{ color: "#0f172a" }}>{r.registrant}</div>
 </div>
 ))}
+
 </>
 )}
 </div>
 </div>
 </div>
 )}
+
+{/* ===== 支出ページと同じ 編集モーダル ===== */}
+{editOpen && (
+<div style={styles.overlay} onClick={closeEdit} role="dialog" aria-modal="true">
+<div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+<div style={styles.modalHead}>
+<div style={styles.modalTitle}>明細の編集</div>
+<button style={styles.btnSub} onClick={closeEdit}>閉じる</button>
+</div>
+
+<div style={styles.modalBody}>
+{/* 登録者カード */}
+<div>
+<div style={styles.label}>登録者（必須）</div>
+<div style={styles.regCardRow}>
+{(["将哉", "未有"] as const).map((p) => {
+const exists = REGISTRANTS.includes(p);
+if (!exists) return <div key={p} />;
+const active = registrant === p;
+return (
+<div
+key={p}
+style={styles.regCard(active)}
+onClick={() => {
+setRegistrant(p);
+if (!touched.registrant) setTouched((t) => ({ ...t, registrant: true }));
+}}
+role="button"
+>
+{p}
+</div>
+);
+})}
+</div>
+{touched.registrant && missing.registrant && (
+<div style={{ marginTop: 6, color: "#dc2626", fontWeight: 900, fontSize: 12 }}>
+登録者を選択してください
+</div>
+)}
+</div>
+
+<div style={styles.grid}>
+{/* date */}
+<div>
+<div style={styles.label}>日付（必須）</div>
+<input
+type="date"
+value={date}
+onChange={(e) => setDate(e.target.value)}
+onBlur={() => setTouched((t) => ({ ...t, date: true }))}
+style={{ ...styles.input, ...(touched.date && missing.date ? styles.errorBorder : {}) }}
+/>
+</div>
+
+{/* source */}
+<div>
+<div style={styles.label}>支出元（必須）</div>
+<select
+value={source}
+onChange={(e) => setSource(e.target.value)}
+onBlur={() => setTouched((t) => ({ ...t, source: true }))}
+style={{ ...styles.input, ...(touched.source && missing.source ? styles.errorBorder : {}) }}
+>
+<option value="">選択</option>
+{EXPENSE_SOURCES.map((s) => (
+<option key={s} value={s}>{s}</option>
+))}
+</select>
+</div>
+
+{/* amount */}
+<div>
+<div style={styles.label}>金額（必須）</div>
+<div style={styles.amountRow}>
+<input
+inputMode="numeric"
+placeholder="例: 12,000"
+value={amountText}
+onChange={(e) => onChangeAmount(e.target.value)}
+onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
+style={{
+...styles.input,
+textAlign: "center",
+fontWeight: 900,
+fontVariantNumeric: "tabular-nums",
+...(touched.amount && missing.amount ? styles.errorBorder : {}),
+}}
+/>
+<button type="button" onClick={toggleMinus} style={styles.minusBtn(isMinus)} aria-label="minus">
+−
+</button>
+</div>
+<div style={{ marginTop: 4, fontSize: 12, fontWeight: 900, textAlign: "center", color: "#334155" }}>
+{Number.isFinite(amountValue) ? fmtYen(amountValue) : "¥0"}
+</div>
+</div>
+
+{/* category */}
+<div>
+<div style={styles.label}>カテゴリ（必須）</div>
+<select
+value={category}
+onChange={(e) => {
+const v = e.target.value;
+setCategory(v);
+setSubCategorySelect("");
+}}
+onBlur={() => setTouched((t) => ({ ...t, category: true }))}
+style={{ ...styles.input, ...(touched.category && missing.category ? styles.errorBorder : {}) }}
+>
+<option value="">選択</option>
+{CATEGORIES.map((c) => (
+<option key={c} value={c}>{c}</option>
+))}
+</select>
+</div>
+
+{/* subCategory */}
+<div>
+<div style={styles.label}>カテゴリ内訳（必須）</div>
+<select
+value={subCategorySelect}
+onChange={(e) => {
+const v = e.target.value;
+setSubCategorySelect(v);
+if (v !== FREE_LABEL) setMemo("");
+}}
+onBlur={() => setTouched((t) => ({ ...t, subCategory: true }))}
+disabled={!category}
+style={{
+...styles.input,
+...(touched.subCategory && missing.subCategory ? styles.errorBorder : {}),
+opacity: category ? 1 : 0.6,
+}}
+>
+<option value="">{category ? "選択" : "カテゴリを先に選択"}</option>
+{(() => {
+if (!category || !isCategory(category)) return [];
+const list = SUBCATEGORIES[category] ?? [];
+const withoutFree = list.filter((s) => s !== FREE_LABEL);
+return [...withoutFree, FREE_LABEL];
+})().map((s) => (
+<option key={s} value={s}>{s}</option>
+))}
+</select>
+
+{subCategorySelect === FREE_LABEL && (
+<div style={{ marginTop: 8 }}>
+<div style={styles.label}>自由入力（必須）</div>
+<input
+value={memo}
+onChange={(e) => setMemo(e.target.value)}
+onBlur={() => setTouched((t) => ({ ...t, subCategory: true }))}
+placeholder="例: コストコ / 交際費 / 雑費 など"
+style={{ ...styles.input, ...(touched.subCategory && missing.subCategory ? styles.errorBorder : {}) }}
+/>
+</div>
+)}
+</div>
+
+{/* memo optional */}
+{subCategorySelect !== FREE_LABEL && (
+<div style={{ gridColumn: wide ? "1 / -1" : undefined }}>
+<div style={styles.label}>メモ（任意）</div>
+<input
+value={memo}
+onChange={(e) => setMemo(e.target.value)}
+style={{ ...styles.input, height: 40 }}
+placeholder="任意"
+/>
+</div>
+)}
+</div>
+</div>
+
+<div style={styles.modalFoot}>
+<button style={styles.btnDanger} onClick={onDeleteEdit}>削除</button>
+<button style={styles.btnSub} onClick={closeEdit}>キャンセル</button>
+<button style={styles.btnPrimary} onClick={onSaveEdit}>更新</button>
+</div>
+</div>
+</div>
+)}
+
 {/* ✅ ヘッダー選択モーダル */}
 {pickerOpen && (
 <div style={styles.pickerOverlay} onClick={closePicker} role="button">
