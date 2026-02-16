@@ -2480,7 +2480,7 @@ detailFilter.amountMin ||
 detailFilter.amountMax) && (
 <button style={styles.tinyBtn} onClick={() => setDetailFilter(EMPTY_DETAIL_FILTER)}
 >
-フィルター解除
+解除
 </button>
 )}
 <button style={styles.closeBtn} onClick={() => setDetailOpen(false)}>
@@ -2530,125 +2530,7 @@ background: "#fff",
 )}
 </div>
 </div>
-{/* ✅ フィルター */}
-<div style={styles.filterGrid}>
-<div style={styles.filterRow}>
-<div style={styles.filterLabel}>カテゴリ</div>
-<select
-value={detailFilter.category ?? ""}
-onChange={(e) =>
-setDetailFilter((p) => ({
-...p,
-category: e.target.value,
-subCategory: "",
-}))
-}
-style={styles.inputBase}
->
-<option value="">（指定なし）</option>
-{CATEGORIES.map((c) => (
-<option key={c} value={c}>
-{c}
-</option>
-))}
-</select>
-</div>
 
-<div style={styles.filterRow}>
-<div style={styles.filterLabel}>内訳</div>
-<select
-value={detailFilter.subCategory ?? ""}
-onChange={(e) =>
-setDetailFilter((p) => ({ ...p, subCategory: e.target.value }))
-}
-style={styles.inputBase}
->
-<option value="">（指定なし）</option>
-{Array.from(new Set(detailRows.map((r) => r.subCategory))).map((s) => (
-<option key={s} value={s}>
-{s}
-</option>
-))}
-</select>
-</div>
-
-<div style={styles.filterRow}>
-<div style={styles.filterLabel}>金額</div>
-<div style={styles.amountRange}>
-<input
-inputMode="numeric"
-placeholder="min"
-value={detailFilter.amountMin ?? ""}
-onChange={(e) =>
-setDetailFilter((p) => ({ ...p, amountMin: e.target.value }))
-}
-style={styles.inputBase}
-/>
-<div style={{ textAlign: "center" }}>〜</div>
-<input
-inputMode="numeric"
-placeholder="max"
-value={detailFilter.amountMax ?? ""}
-onChange={(e) =>
-setDetailFilter((p) => ({ ...p, amountMax: e.target.value }))
-}
-style={styles.inputBase}
-/>
-</div>
-</div>
-
-<div style={styles.filterRow}>
-<div style={styles.filterLabel}>登録者</div>
-<select
-value={detailFilter.registrant ?? ""}
-onChange={(e) =>
-setDetailFilter((p) => ({ ...p, registrant: e.target.value }))
-}
-style={styles.inputBase}
->
-<option value="">（指定なし）</option>
-{Array.from(new Set(detailRows.map((r) => r.registrant))).map((name) => (
-<option key={name} value={name}>
-{name}
-</option>
-))}
-</select>
-</div>
-</div>
-
-{/* ✅ ソート */}
-<div style={styles.sortRow}>
-<div style={styles.filterRow}>
-<div style={styles.filterLabel}>並び替え</div>
-<select
-value={detailSort.key}
-onChange={(e) =>
-setDetailSort((p) => ({ ...p, key: e.target.value as any }))
-}
-style={styles.inputBase}
->
-<option value="date">日付</option>
-<option value="amount">金額</option>
-<option value="category">カテゴリ</option>
-<option value="subCategory">内訳</option>
-<option value="registrant">登録者</option>
-</select>
-</div>
-
-<div style={styles.filterRow}>
-<div style={styles.filterLabel}>順序</div>
-<select
-value={detailSort.dir}
-onChange={(e) =>
-setDetailSort((p) => ({ ...p, dir: e.target.value as any }))
-}
-style={styles.inputBase}
->
-<option value="asc">昇順</option>
-<option value="desc">降順</option>
-</select>
-</div>
-</div>
 <div style={styles.modalBody}>
 {detailRows.length === 0 ? (
 <div style={{ fontWeight: 900, color: "#64748b", textAlign: "center", padding: 18 }}>
