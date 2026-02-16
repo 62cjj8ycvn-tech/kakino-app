@@ -1206,7 +1206,15 @@ setRangeEnd(sb);
 const [detailOpen, setDetailOpen] = useState(false);
 const [detailKey, setDetailKey] = useState<string>(""); // "YYYY-MM-DD" or "YYYY-MM"
 const [detailModeMonthly, setDetailModeMonthly] = useState(false);
+// ====== 下部一覧（期間全体の明細） ======
+const [bottomOpen, setBottomOpen] = useState(false);
+const [bottomCat, setBottomCat] = useState<string | null>(null);
+const [bottomSub, setBottomSub] = useState<string | null>(null);
 
+const [bottomSort, setBottomSort] = useState<{ key: "date" | "amount"; dir: "asc" | "desc" }>({
+key: "date",
+dir: "asc",
+});
 // ====== 明細行タップ：編集/削除モーダル（支出ページと同UI） ======
 const [editOpen, setEditOpen] = useState(false);
 const [editingId, setEditingId] = useState<string | null>(null);
@@ -1452,6 +1460,7 @@ amountMax: "",
 setDetailSort({ key: "date", dir: "asc" });
 };
 
+
 // モーダルの明細（今のlineFocusを必ず反映）
 const detailRows = useMemo(() => {
 // ① scopeを反映したベース
@@ -1513,6 +1522,43 @@ detailModeMonthly,
 detailFilter,
 detailSort,
 ]);
+
+// ✅ 下部一覧の明細（期間全体：日付で絞らない版）
+const bottomRows = useMemo(() => {
+if (!bottomOpen || !bottomCat) return [];
+
+// ① scopeを反映（rowsMonth は期間モードなら monthsActive 全月ぶん入ってる）
+let base =
+scope === "total"
+? rowsMonth
+: scope === "shoya"
+? rowsMonth.filter((r) => isShoyaSource(r.source))
+: rowsMonth.filter((r) => isMiuSource(r.source));
+
+// ② カテゴリ/内訳で絞る（あなたの既存関数を使う）
+base = filterByCatSub(base, bottomCat, bottomSub);
+
+// ③ 期間モードじゃない場合も、month でその月に限定（安全）
+// rowsMonth は単月でも month の明細だけのはずだけど念のため
+if (!rangeMode) {
+base = base.filter((r) => r.month === month);
+} else {
+// rangeMode時：monthsActiveに含まれる月だけ
+const setYM = new Set(monthsActive);
+base = base.filter((r) => setYM.has(r.month));
+}
+
+// ④ 並び替え
+const mul = bottomSort.dir === "asc" ? 1 : -1;
+const out = [...base].sort((a, b) => {
+if (bottomSort.key === "amount") return (Number(a.amount) - Number(b.amount)) * mul;
+// date
+return (String(a.date).localeCompare(String(b.date))) * mul;
+});
+
+return out;
+}, [bottomOpen, bottomCat, bottomSub, bottomSort, scope, rowsMonth, rangeMode, month, monthsActive]);
+
 // 選択肢を作る（いま見えてる明細からユニーク抽出）
 const pickerOptions = useMemo(() => {
 if (pickerKind === "category") {
@@ -2263,10 +2309,25 @@ const lineBtnLeftLabel = rangeMode ? "月別" : "日別";
 const openDrill = (category: string) => {
 setDrillCat((prev) => {
 const next = prev === category ? null : category;
+
+// ドリル（内訳）を開く/閉じる
 setDrillSub(null);
+
+// 下部一覧も同期（カテゴリが閉じたら下部も閉じる）
+if (next) {
+setBottomCat(next);
+setBottomSub(null);
+setBottomOpen(true);
+} else {
+setBottomOpen(false);
+setBottomCat(null);
+setBottomSub(null);
+}
+
 return next;
 });
 };
+
 
 return (
 <div style={styles.page}>
@@ -2570,7 +2631,15 @@ borderRadius: 10,
 paddingLeft: 6,
 paddingRight: 6,
 }}
-onClick={() => setDrillSub((prev) => (prev === s.subCategory ? null : s.subCategory))}
+onClick={() => {
+const next = drillSub === s.subCategory ? null : s.subCategory;
+setDrillSub(next);
+
+// 下部一覧にも反映
+setBottomCat(drillCat);
+setBottomSub(next);
+setBottomOpen(true);
+}}
 role="button"
 >
 <div style={{ ...styles.subName, color: drillSub === s.subCategory ? "#0b4aa2" : "#0f172a" }}>
@@ -2739,6 +2808,80 @@ color: bottomGuideCard.deltaColor,
 {bottomGuideCard.deltaText}
 </div>
 </div>
+</div>
+</div>
+)}
+{/* ✅ 下部：期間全体のカテゴリ明細一覧 */}
+{bottomOpen && bottomCat && (
+<div style={{ ...styles.card, marginTop: 10 }}>
+<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+<div style={{ fontSize: 14, fontWeight: 900, color: "#0b4aa2" }}>
+{rangeMode ? `${rangeStart}〜${rangeEnd}` : month} / {bottomCat}
+{bottomSub ? `（${bottomSub}）` : ""}
+</div>
+
+<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+<button
+style={styles.tinyBtn}
+onClick={() =>
+setBottomSort((p) => ({
+key: "date",
+dir: p.key === "date" && p.dir === "asc" ? "desc" : "asc",
+}))
+}
+>
+日付⇅
+</button>
+<button
+style={styles.tinyBtn}
+onClick={() =>
+setBottomSort((p) => ({
+key: "amount",
+dir: p.key === "amount" && p.dir === "asc" ? "desc" : "asc",
+}))
+}
+>
+金額⇅
+</button>
+<button style={styles.closeBtn} onClick={() => setBottomOpen(false)}>
+閉じる
+</button>
+</div>
+</div>
+
+<div style={{ marginTop: 8, fontWeight: 900, color: "#334155" }}>
+件数 {bottomRows.length} / 合計 {fmtYen(bottomRows.reduce((a, b) => a + (Number(b.amount) || 0), 0))}
+</div>
+
+<div style={{ marginTop: 10 }}>
+{bottomRows.length === 0 ? (
+<div style={{ fontWeight: 900, color: "#64748b", textAlign: "center", padding: 18 }}>
+該当明細なし
+</div>
+) : (
+<>
+<div style={{ ...styles.tableHeader, gridTemplateColumns: "110px 1fr 110px 80px" }}>
+<div style={{ textAlign: "center" }}>日付</div>
+<div style={{ textAlign: "center" }}>内訳</div>
+<div style={{ textAlign: "center" }}>金額</div>
+<div style={{ textAlign: "center" }}>登録者</div>
+</div>
+
+{bottomRows.map((r) => (
+<div
+key={r.id}
+style={{ ...styles.tableRow, gridTemplateColumns: "110px 1fr 110px 80px", cursor: "pointer" }}
+onClick={() => openEdit(r)}
+role="button"
+>
+<div>{fmtMdDow(r.date).text}</div>
+<div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.subCategory}</div>
+<div>{fmtYen(r.amount)}</div>
+<div>{r.registrant}</div>
+</div>
+))}
+</>
+)}
 </div>
 </div>
 )}
