@@ -1431,6 +1431,8 @@ type PickerKind = "category" | "subCategory" | "amount" | "registrant";
 const [pickerOpen, setPickerOpen] = useState(false);
 const [pickerKind, setPickerKind] = useState<PickerKind>("category");
 
+
+
 const openPicker = (kind: PickerKind) => {
 setPickerKind(kind);
 setPickerOpen(true);
@@ -1438,7 +1440,123 @@ setPickerOpen(true);
 
 const closePicker = () => setPickerOpen(false);
 
+// ====== 下部一覧用：フィルタ ======
+type BottomPickerKind = "date" | "subCategory" | "amount" | "registrant";
 
+const [bottomFilter, setBottomFilter] = useState<{
+subCategory: string; // ""=指定なし
+registrant: string; // ""=指定なし
+amountMin: string; // ""=指定なし
+amountMax: string; // ""=指定なし
+dateWeekendOnly: boolean; // つけたいなら（今回は未使用でもOK）
+}>({
+subCategory: "",
+registrant: "",
+amountMin: "",
+amountMax: "",
+dateWeekendOnly: false,
+});
+
+const [bottomPickerOpen, setBottomPickerOpen] = useState(false);
+const [bottomPickerKind, setBottomPickerKind] = useState<BottomPickerKind>("subCategory");
+
+const openBottomPicker = (kind: BottomPickerKind) => {
+setBottomPickerKind(kind);
+setBottomPickerOpen(true);
+};
+const closeBottomPicker = () => setBottomPickerOpen(false);
+
+const applyBottomPickerValue = (v: any) => {
+if (bottomPickerKind === "subCategory") {
+setBottomFilter((p) => ({ ...p, subCategory: String(v || "") }));
+} else if (bottomPickerKind === "registrant") {
+setBottomFilter((p) => ({ ...p, registrant: String(v || "") }));
+} else if (bottomPickerKind === "amount") {
+setBottomFilter((p) => ({ ...p, amountMin: String(v?.min ?? ""), amountMax: String(v?.max ?? "") }));
+}
+closeBottomPicker();
+};
+
+// ====== 下部一覧：ベース行（カテゴリ/内訳/期間/ソートまで反映） ======
+const bottomRows = useMemo(() => {
+if (!bottomOpen || !bottomCat) return [];
+
+// ① scopeを反映（rowsMonth は期間モードなら monthsActive 全月ぶん入ってる）
+let base =
+scope === "total"
+? rowsMonth
+: scope === "shoya"
+? rowsMonth.filter((r) => isShoyaSource(r.source))
+: rowsMonth.filter((r) => isMiuSource(r.source));
+
+// ② カテゴリ/内訳で絞る
+base = filterByCatSub(base, bottomCat, bottomSub);
+
+// ③ month 範囲を安全に限定
+if (!rangeMode) {
+base = base.filter((r) => r.month === month);
+} else {
+const setYM = new Set(monthsActive);
+base = base.filter((r) => setYM.has(r.month));
+}
+
+// ④ 並び替え
+const mul = bottomSort.dir === "asc" ? 1 : -1;
+const out = [...base].sort((a, b) => {
+if (bottomSort.key === "amount") return (Number(a.amount) - Number(b.amount)) * mul;
+return String(a.date).localeCompare(String(b.date)) * mul;
+});
+
+return out;
+}, [bottomOpen, bottomCat, bottomSub, bottomSort, scope, rowsMonth, rangeMode, month, monthsActive]);
+
+// ====== 下部一覧：フィルタ適用後 ======
+const bottomRowsFiltered = useMemo(() => {
+let out = [...bottomRows];
+
+// 内訳（表示値の文字一致でOK）
+if (bottomFilter.subCategory) out = out.filter((r) => r.subCategory === bottomFilter.subCategory);
+
+if (bottomFilter.registrant) out = out.filter((r) => r.registrant === bottomFilter.registrant);
+
+const min = bottomFilter.amountMin?.trim() ? Number(bottomFilter.amountMin) : null;
+const max = bottomFilter.amountMax?.trim() ? Number(bottomFilter.amountMax) : null;
+
+if (min != null && Number.isFinite(min)) out = out.filter((r) => Number(r.amount) >= min);
+if (max != null && Number.isFinite(max)) out = out.filter((r) => Number(r.amount) <= max);
+
+// dateWeekendOnly を使うならここで絞れる
+// if (bottomFilter.dateWeekendOnly) out = out.filter((r) => fmtMdDow(r.date).isWeekend);
+
+return out;
+}, [bottomRows, bottomFilter]);
+
+// ====== 下部ピッカー選択肢（Hookはトップレベルで！） ======
+const bottomPickerOptions = useMemo(() => {
+if (bottomPickerKind === "subCategory") {
+const uniq = Array.from(new Set(bottomRows.map((r) => r.subCategory))).filter(Boolean);
+return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
+}
+
+if (bottomPickerKind === "registrant") {
+const uniq = Array.from(new Set(bottomRows.map((r) => r.registrant))).filter(Boolean);
+return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
+}
+
+if (bottomPickerKind === "amount") {
+return [
+{ label: "（指定なし）", value: { min: "", max: "" } },
+{ label: "〜 ¥999", value: { min: "", max: "999" } },
+{ label: "¥1,000 〜 ¥4,999", value: { min: "1000", max: "4999" } },
+{ label: "¥5,000 〜 ¥9,999", value: { min: "5000", max: "9999" } },
+{ label: "¥10,000 〜 ¥19,999", value: { min: "10000", max: "19999" } },
+{ label: "¥20,000 〜", value: { min: "20000", max: "" } },
+];
+}
+
+// date は今回は未使用
+return [{ label: "（指定なし）", value: "" }];
+}, [bottomPickerKind, bottomRows]);
 
 // モーダル内ソート（全て昇順/降順可能）
 const [detailSort, setDetailSort] = useState<{
@@ -1522,42 +1640,6 @@ detailModeMonthly,
 detailFilter,
 detailSort,
 ]);
-
-// ✅ 下部一覧の明細（期間全体：日付で絞らない版）
-const bottomRows = useMemo(() => {
-if (!bottomOpen || !bottomCat) return [];
-
-// ① scopeを反映（rowsMonth は期間モードなら monthsActive 全月ぶん入ってる）
-let base =
-scope === "total"
-? rowsMonth
-: scope === "shoya"
-? rowsMonth.filter((r) => isShoyaSource(r.source))
-: rowsMonth.filter((r) => isMiuSource(r.source));
-
-// ② カテゴリ/内訳で絞る（あなたの既存関数を使う）
-base = filterByCatSub(base, bottomCat, bottomSub);
-
-// ③ 期間モードじゃない場合も、month でその月に限定（安全）
-// rowsMonth は単月でも month の明細だけのはずだけど念のため
-if (!rangeMode) {
-base = base.filter((r) => r.month === month);
-} else {
-// rangeMode時：monthsActiveに含まれる月だけ
-const setYM = new Set(monthsActive);
-base = base.filter((r) => setYM.has(r.month));
-}
-
-// ④ 並び替え
-const mul = bottomSort.dir === "asc" ? 1 : -1;
-const out = [...base].sort((a, b) => {
-if (bottomSort.key === "amount") return (Number(a.amount) - Number(b.amount)) * mul;
-// date
-return (String(a.date).localeCompare(String(b.date))) * mul;
-});
-
-return out;
-}, [bottomOpen, bottomCat, bottomSub, bottomSort, scope, rowsMonth, rangeMode, month, monthsActive]);
 
 // 選択肢を作る（いま見えてる明細からユニーク抽出）
 const pickerOptions = useMemo(() => {
@@ -2038,6 +2120,7 @@ border: "1px solid #cbd5e1",
 background: "#fff",
 fontWeight: 900,
 cursor: "pointer",
+whiteSpace: "nowrap",
 } as React.CSSProperties,
 
 drillHeaderLine: {
@@ -2217,7 +2300,7 @@ border: "1px solid #cbd5e1",
 background: "#fff",
 fontWeight: 900,
 cursor: "pointer",
-fontSize: 12,
+fontSize: 9,
 } as React.CSSProperties,
 tableHeader: {
 display: "grid",
@@ -2815,12 +2898,32 @@ color: bottomGuideCard.deltaColor,
 {bottomOpen && bottomCat && (
 <div style={{ ...styles.card, marginTop: 10 }}>
 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-<div style={{ fontSize: 14, fontWeight: 900, color: "#0b4aa2" }}>
-{rangeMode ? `${rangeStart}〜${rangeEnd}` : month} / {bottomCat}
+<div
+style={{
+fontSize: 9,
+fontWeight: 800,
+color: "#0b4aa2",
+display: "flex",
+alignItems: "center",
+gap: 4,
+flexWrap: "nowrap",
+}}
+>
+<span>{rangeMode ? `${rangeStart}〜${rangeEnd}` : month}</span>
+<span style={{ color: "#64748b", fontWeight: 700 }}>
+/ {bottomCat}
 {bottomSub ? `（${bottomSub}）` : ""}
+</span>
 </div>
 
-<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+<div
+style={{
+display: "flex",
+gap: 4,
+alignItems: "center",
+flexWrap: "nowrap", // ← 折り返し禁止
+}}
+>
 <button
 style={styles.tinyBtn}
 onClick={() =>
@@ -2843,6 +2946,15 @@ dir: p.key === "amount" && p.dir === "asc" ? "desc" : "asc",
 >
 金額⇅
 </button>
+<button
+style={styles.tinyBtn}
+onClick={() =>
+setBottomFilter({ subCategory: "", registrant: "", amountMin: "", amountMax: "", dateWeekendOnly: false })
+}
+>
+解除
+</button>
+
 <button style={styles.closeBtn} onClick={() => setBottomOpen(false)}>
 閉じる
 </button>
@@ -2850,36 +2962,79 @@ dir: p.key === "amount" && p.dir === "asc" ? "desc" : "asc",
 </div>
 
 <div style={{ marginTop: 8, fontWeight: 900, color: "#334155" }}>
-件数 {bottomRows.length} / 合計 {fmtYen(bottomRows.reduce((a, b) => a + (Number(b.amount) || 0), 0))}
+件数 {bottomRowsFiltered.length} / 合計 {fmtYen(bottomRowsFiltered.reduce((a, b) => a + (Number(b.amount) || 0), 0))}
 </div>
 
 <div style={{ marginTop: 10 }}>
-{bottomRows.length === 0 ? (
+{bottomRowsFiltered.length === 0 ? (
 <div style={{ fontWeight: 900, color: "#64748b", textAlign: "center", padding: 18 }}>
 該当明細なし
 </div>
 ) : (
 <>
-<div style={{ ...styles.tableHeader, gridTemplateColumns: "110px 1fr 110px 80px" }}>
-<div style={{ textAlign: "center" }}>日付</div>
-<div style={{ textAlign: "center" }}>内訳</div>
-<div style={{ textAlign: "center" }}>金額</div>
-<div style={{ textAlign: "center" }}>登録者</div>
+<div
+style={{
+...styles.tableHeader,
+gridTemplateColumns: "92px 1fr 96px 72px",
+fontSize: 11,
+}}
+>
+<button
+style={{ ...styles.headerBtn, color: "#64748b", whiteSpace: "nowrap" }}
+onClick={() => openBottomPicker("date")}
+>
+日付
+</button>
+<button
+style={{ ...styles.headerBtn, color: "#64748b", whiteSpace: "nowrap" }}
+onClick={() => openBottomPicker("subCategory")}
+>
+内訳
+</button>
+<button
+style={{ ...styles.headerBtn, color: "#64748b", whiteSpace: "nowrap" }}
+onClick={() => openBottomPicker("amount")}
+>
+金額
+</button>
+<button
+style={{ ...styles.headerBtn, color: "#64748b", whiteSpace: "nowrap" }}
+onClick={() => openBottomPicker("registrant")}
+>
+登録者
+</button>
 </div>
 
-{bottomRows.map((r) => (
+
+{bottomRowsFiltered.map((r) => {
+const d = fmtMdDow(r.date);
+return (
 <div
 key={r.id}
-style={{ ...styles.tableRow, gridTemplateColumns: "110px 1fr 110px 80px", cursor: "pointer" }}
+style={{
+...styles.tableRow,
+gridTemplateColumns: "92px 1fr 96px 72px",
+cursor: "pointer",
+fontSize: 11,
+}}
 onClick={() => openEdit(r)}
 role="button"
 >
-<div>{fmtMdDow(r.date).text}</div>
-<div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.subCategory}</div>
-<div>{fmtYen(r.amount)}</div>
-<div>{r.registrant}</div>
+{/* ✅ 土日は赤 */}
+<div style={{ color: d.isWeekend ? "#dc2626" : "#0f172a", whiteSpace: "nowrap" }}>
+{d.text}
 </div>
-))}
+
+{/* ✅ 内訳は省略表示で必ず出す */}
+<div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0f172a" }}>
+{r.subCategory}
+</div>
+
+<div style={{ whiteSpace: "nowrap" }}>{fmtYen(r.amount)}</div>
+<div style={{ whiteSpace: "nowrap", color: "#0f172a" }}>{r.registrant}</div>
+</div>
+);
+})}
 </>
 )}
 </div>
@@ -3287,7 +3442,40 @@ role="button"
 </div>
 </div>
 )}
+{bottomPickerOpen && (
+<div style={styles.pickerOverlay} onClick={closeBottomPicker} role="button">
+<div style={styles.pickerCard} onClick={(e) => e.stopPropagation()}>
+<div style={styles.pickerHeader}>
+{bottomPickerKind === "subCategory"
+? "内訳で絞り込み"
+: bottomPickerKind === "registrant"
+? "登録者で絞り込み"
+: bottomPickerKind === "amount"
+? "金額範囲で絞り込み"
+: "選択"}
+</div>
 
+<div style={styles.pickerList}>
+{bottomPickerOptions.map((opt, idx) => (
+<div
+key={idx}
+style={styles.pickerItem}
+onClick={() => applyBottomPickerValue(opt.value)}
+role="button"
+>
+{opt.label}
+</div>
+))}
+</div>
+
+<div style={{ padding: 10 }}>
+<button style={styles.closeBtn} onClick={closeBottomPicker}>
+閉じる
+</button>
+</div>
+</div>
+</div>
+)}
 </div>
 );
 }
