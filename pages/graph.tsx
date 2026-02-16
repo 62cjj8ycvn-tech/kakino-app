@@ -1824,6 +1824,8 @@ zIndex: 2,
 fontWeight: 900,
 color: "#64748b",
 textAlign: "center",
+} as React.CSSProperties,
+
 headerBtn: {
 all: "unset",
 cursor: "pointer",
@@ -1875,7 +1877,7 @@ cursor: "pointer",
 fontWeight: 900,
 color: "#0f172a",
 } as React.CSSProperties,
-} as React.CSSProperties,
+
 tableRow: {
 display: "grid",
 gridTemplateColumns: "1fr 1fr 110px 80px",
