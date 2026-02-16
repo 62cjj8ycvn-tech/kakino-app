@@ -1183,13 +1183,74 @@ amountMin: string; // "" = 未指定
 amountMax: string; // "" = 未指定
 };
 
-const [detailFilter, setDetailFilter] = useState<DetailFilter>({
+const EMPTY_DETAIL_FILTER: DetailFilter = {
 category: "",
 subCategory: "",
 registrant: "",
 amountMin: "",
 amountMax: "",
-});
+};
+
+
+const [detailFilter, setDetailFilter] = useState<DetailFilter>(EMPTY_DETAIL_FILTER);
+
+// ====== ヘッダー用：フィルター選択モーダル ======
+type PickerKind = "category" | "subCategory" | "amount" | "registrant";
+const [pickerOpen, setPickerOpen] = useState(false);
+const [pickerKind, setPickerKind] = useState<PickerKind>("category");
+
+const openPicker = (kind: PickerKind) => {
+setPickerKind(kind);
+setPickerOpen(true);
+};
+
+const closePicker = () => setPickerOpen(false);
+
+// 選択肢を作る（いま見えてる明細からユニーク抽出）
+const pickerOptions = useMemo(() => {
+if (pickerKind === "category") {
+// カテゴリはマスター固定
+return [{ label: "（指定なし）", value: "" }, ...CATEGORIES.map((c) => ({ label: c, value: c }))];
+}
+
+if (pickerKind === "subCategory") {
+const uniq = Array.from(new Set(detailRows.map((r) => r.subCategory))).filter(Boolean);
+return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
+}
+
+if (pickerKind === "registrant") {
+const uniq = Array.from(new Set(detailRows.map((r) => r.registrant))).filter(Boolean);
+return [{ label: "（指定なし）", value: "" }, ...uniq.map((s) => ({ label: s, value: s }))];
+}
+
+// amount（プリセット）
+return [
+{ label: "（指定なし）", value: { min: "", max: "" } },
+{ label: "〜 ¥999", value: { min: "", max: "999" } },
+{ label: "¥1,000 〜 ¥4,999", value: { min: "1000", max: "4999" } },
+{ label: "¥5,000 〜 ¥9,999", value: { min: "5000", max: "9999" } },
+{ label: "¥10,000 〜 ¥19,999", value: { min: "10000", max: "19999" } },
+{ label: "¥20,000 〜", value: { min: "20000", max: "" } },
+];
+}, [pickerKind, detailRows]);
+
+const applyPickerValue = (v: any) => {
+if (pickerKind === "category") {
+setDetailFilter((p) => ({ ...p, category: String(v || ""), subCategory: "" }));
+} else if (pickerKind === "subCategory") {
+setDetailFilter((p) => ({ ...p, subCategory: String(v || "") }));
+} else if (pickerKind === "registrant") {
+setDetailFilter((p) => ({ ...p, registrant: String(v || "") }));
+} else {
+// amount
+const min = v?.min ?? "";
+const max = v?.max ?? "";
+setDetailFilter((p) => ({ ...p, amountMin: String(min), amountMax: String(max) }));
+}
+
+closePicker();
+};
+
 
 // モーダル内ソート（全て昇順/降順可能）
 const [detailSort, setDetailSort] = useState<{
@@ -1763,6 +1824,57 @@ zIndex: 2,
 fontWeight: 900,
 color: "#64748b",
 textAlign: "center",
+headerBtn: {
+all: "unset",
+cursor: "pointer",
+textAlign: "center",
+fontWeight: 900,
+color: "#0b4aa2",
+padding: "6px 0",
+} as React.CSSProperties,
+
+pickerOverlay: {
+position: "fixed",
+inset: 0,
+background: "rgba(15,23,42,0.55)",
+display: "flex",
+justifyContent: "center",
+alignItems: "center",
+padding: 12,
+zIndex: 60, // detail modal(50)より上
+} as React.CSSProperties,
+
+pickerCard: {
+width: "min(420px, 100%)",
+maxHeight: "70vh",
+background: "#fff",
+borderRadius: 14,
+border: "1px solid #e5e7eb",
+boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+overflow: "hidden",
+display: "flex",
+flexDirection: "column",
+} as React.CSSProperties,
+
+pickerHeader: {
+padding: 10,
+borderBottom: "1px solid #e5e7eb",
+background: "linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)",
+fontWeight: 900,
+color: "#0b4aa2",
+} as React.CSSProperties,
+
+pickerList: {
+overflow: "auto",
+} as React.CSSProperties,
+
+pickerItem: {
+padding: "12px 12px",
+borderBottom: "1px dashed #e2e8f0",
+cursor: "pointer",
+fontWeight: 900,
+color: "#0f172a",
+} as React.CSSProperties,
 } as React.CSSProperties,
 tableRow: {
 display: "grid",
@@ -2364,7 +2476,8 @@ detailFilter.subCategory ||
 detailFilter.registrant ||
 detailFilter.amountMin ||
 detailFilter.amountMax) && (
-<button style={styles.tinyBtn} onClick={() => setDetailFilter({})}>
+<button style={styles.tinyBtn} onClick={() => setDetailFilter(EMPTY_DETAIL_FILTER)}
+>
 フィルター解除
 </button>
 )}
@@ -2542,33 +2655,18 @@ style={styles.inputBase}
 ) : (
 <>
 <div style={styles.tableHeader}>
-<div>カテゴリ</div>
-<div>内訳</div>
-<div>金額</div>
-<div>登録者</div>
+<button style={styles.headerBtn} onClick={() => openPicker("category")}>カテゴリ</button>
+<button style={styles.headerBtn} onClick={() => openPicker("subCategory")}>内訳</button>
+<button style={styles.headerBtn} onClick={() => openPicker("amount")}>金額</button>
+<button style={styles.headerBtn} onClick={() => openPicker("registrant")}>登録者</button>
 </div>
 
 {detailRows.map((r, idx) => (
 <div key={idx} style={styles.tableRow}>
-<div
-style={{ cursor: "pointer", color: "#0b4aa2" }}
-onClick={() => setDetailFilter((p) => ({ ...p, category: r.category }))}
->
-{r.category}
-</div>
-<div
-style={{ cursor: "pointer", color: "#0b4aa2" }}
-onClick={() => setDetailFilter((p) => ({ ...p, subCategory: r.subCategory }))}
->
-{r.subCategory}
-</div>
+<div style={{ color: "#0f172a" }}>{r.category}</div>
+<div style={{ color: "#0f172a" }}>{r.subCategory}</div>
 <div>{fmtYen(r.amount)}</div>
-<div
-style={{ cursor: "pointer", color: "#0b4aa2" }}
-onClick={() => setDetailFilter((p) => ({ ...p, registrant: r.registrant }))}
->
-{r.registrant}
-</div>
+<div style={{ color: "#0f172a" }}>{r.registrant}</div>
 </div>
 ))}
 </>
@@ -2577,6 +2675,40 @@ onClick={() => setDetailFilter((p) => ({ ...p, registrant: r.registrant }))}
 </div>
 </div>
 )}
+{/* ✅ ヘッダー選択モーダル */}
+{pickerOpen && (
+<div style={styles.pickerOverlay} onClick={closePicker} role="button">
+<div style={styles.pickerCard} onClick={(e) => e.stopPropagation()}>
+<div style={styles.pickerHeader}>
+{pickerKind === "category"
+? "カテゴリを選択"
+: pickerKind === "subCategory"
+? "内訳を選択"
+: pickerKind === "registrant"
+? "登録者を選択"
+: "金額範囲を選択"}
+</div>
+
+<div style={styles.pickerList}>
+{pickerOptions.map((opt, idx) => (
+<div
+key={idx}
+style={styles.pickerItem}
+onClick={() => applyPickerValue(opt.value)}
+role="button"
+>
+{opt.label}
+</div>
+))}
+</div>
+
+<div style={{ padding: 10 }}>
+<button style={styles.closeBtn} onClick={closePicker}>閉じる</button>
+</div>
+</div>
+</div>
+)}
+
 </div>
 );
 }
