@@ -1,5 +1,6 @@
 // pages/graph.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/router";
 import {
 collection,
 doc,
@@ -299,6 +300,12 @@ return daily; // length=dim, index0=1日
 
 
 export default function GraphPage() {
+const router = useRouter();
+
+const goToExpense = () => {
+router.push("/expense");
+};
+
 // responsive
 const [wide, setWide] = useState(false);
 useEffect(() => {
@@ -2471,7 +2478,7 @@ return next;
 });
 }}
 >
-期間表示
+期間
 </button>
 
 <button style={styles.toggleBtn(guideFull)} onClick={() => setGuideFull((v) => !v)}>
@@ -2480,8 +2487,12 @@ return next;
 style={styles.toggleBtn(false)}
 onClick={forceReload}
 >
-↻再読込
+↻
 </button>
+<button style={styles.toggleBtn(false)} onClick={goToExpense}>
+登録
+</button>
+
 </div>
 
 {/* summary */}
