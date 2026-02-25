@@ -131,10 +131,20 @@ const USER_PALETTE = [
 
 function buildEmailColorMap(emails: string[]) {
 const uniq = Array.from(new Set(emails.filter(Boolean))).sort(); // 安定化
-const map: Record<string, (typeof USER_PALETTE)[number]> = {};
+type UserPalette = (typeof USER_PALETTE)[number];
+
+const map: Record<string, UserPalette> = {};
+
+// ✅ “配列アクセスは undefined かも” を潰す（空配列でも落ちない）
+const pickPalette = (i: number): UserPalette => {
+const p = USER_PALETTE[i % USER_PALETTE.length];
+return (p ?? USER_PALETTE[0]) as UserPalette;
+};
+
 uniq.forEach((email, i) => {
-map[email] = USER_PALETTE[i % USER_PALETTE.length];
+map[email] = pickPalette(i);
 });
+
 return map;
 }
 
