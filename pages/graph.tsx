@@ -75,6 +75,10 @@ category: string;
 subCategory: string;
 source: string;
 memo?: string;
+
+// ✅ 追加（最終登録判定用）
+createdAt?: any;
+updatedAt?: any;
 };
 
 type IncomeDoc = {
@@ -302,8 +306,9 @@ return daily; // length=dim, index0=1日
 export default function GraphPage() {
 const router = useRouter();
 
-const goToExpense = () => {
-router.push("/expense");
+const goToExpense = (openAdd?: boolean) => {
+// openAdd=true のとき、支出ページ側で「＋登録モーダル」を自動で開く
+router.push(openAdd ? "/expense?openAdd=1" : "/expense");
 };
 
 // responsive
@@ -412,7 +417,7 @@ snap.docs.forEach((d) => {
 const raw = d.data() as any;
 
 const row: ExpenseDoc = {
-id: d.id, // ✅ docId
+id: d.id,
 registrant: String(raw.registrant ?? ""),
 date: String(raw.date ?? ""),
 month: String(raw.month ?? ""),
@@ -421,7 +426,12 @@ category: String(raw.category ?? ""),
 subCategory: String(raw.subCategory ?? ""),
 source: String(raw.source ?? ""),
 memo: raw.memo != null ? String(raw.memo) : "",
+
+// ✅ 追加
+createdAt: raw.createdAt ?? null,
+updatedAt: raw.updatedAt ?? null,
 };
+
 
 const ym = row.month;
 if (!resultByMonth[ym]) resultByMonth[ym] = [];
@@ -616,6 +626,53 @@ m.set(key, (m.get(key) ?? 0) + (Number(r.amount) || 0));
 
 return Array.from(m.entries()).map(([subCategory, actual]) => ({ subCategory, actual }));
 }
+
+function daysSinceYMD(ymd: string) {
+// ymd: "YYYY-MM-DD"
+if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return Infinity;
+const [y, m, d] = ymd.split("-").map(Number);
+const dt = new Date(y, (m || 1) - 1, d || 1);
+const today = new Date();
+const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+const diffMs = t0.getTime() - dt.getTime();
+return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function latestDateOf(list: ExpenseDoc[]) {
+// date文字列の最大を返す（YYYY-MM-DD なので文字比較でOK）
+let max = "";
+for (const r of list) {
+const d = String(r.date || "");
+if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > max) max = d;
+}
+return max;
+}
+
+function tsToYMD(ts: any) {
+if (!ts) return "";
+const d =
+typeof ts?.toDate === "function"
+? ts.toDate()
+: ts instanceof Date
+? ts
+: null;
+if (!d) return "";
+const y = d.getFullYear();
+const m = String(d.getMonth() + 1).padStart(2, "0");
+const day = String(d.getDate()).padStart(2, "0");
+return `${y}-${m}-${day}`;
+}
+
+// ✅ “最終登録日” = updatedAt > createdAt > date の順で最大を返す
+function latestRegisteredYMD(list: ExpenseDoc[]) {
+let max = "";
+for (const r of list) {
+const ymd = tsToYMD(r.updatedAt) || tsToYMD(r.createdAt) || String(r.date || "");
+if (/^\d{4}-\d{2}-\d{2}$/.test(ymd) && ymd > max) max = ymd;
+}
+return max;
+}
+
 // totals
 const totalActual = useMemo(() => scopeFiltered.reduce((a, b) => a + (Number(b.amount) || 0), 0), [
 scopeFiltered,
@@ -632,6 +689,21 @@ const expMiu = rowsMonth.filter((r) => isMiuSource(r.source)).reduce((a, b) => a
 const incMiu = incomesMonth.filter((i) => isMiuIncome(i)).reduce((a, b) => a + (Number(b.amount) || 0), 0);
 return expMiu - incMiu;
 }, [rowsMonth, incomesMonth]);
+
+// ===== 最終支出日（将哉/未有）=====
+// ✅ 起点は「支出日(date)」で判定する（登録日 createdAt/updatedAt は見ない）
+
+const shoyaLastExpenseDate = useMemo(() => {
+return latestDateOf(rowsMonth.filter((r) => r.registrant === "将哉"));
+}, [rowsMonth]);
+
+const miuLastExpenseDate = useMemo(() => {
+return latestDateOf(rowsMonth.filter((r) => r.registrant === "未有"));
+}, [rowsMonth]);
+
+// ✅ 「3日以上」＝ >= 3（いまは >3 だからズレてた）
+const shoyaLate = useMemo(() => daysSinceYMD(shoyaLastExpenseDate) >= 3, [shoyaLastExpenseDate]);
+const miuLate = useMemo(() => daysSinceYMD(miuLastExpenseDate) >= 3, [miuLastExpenseDate]);
 
 // 娯楽費（立替カード内訳用：金額）
 const shoyaEntertainment = useMemo(() => {
@@ -2489,7 +2561,7 @@ onClick={forceReload}
 >
 ↻
 </button>
-<button style={styles.toggleBtn(false)} onClick={goToExpense}>
+<button style={styles.toggleBtn(false)} onClick={() => goToExpense(true)}>
 登録
 </button>
 
@@ -2509,7 +2581,15 @@ onClick={forceReload}
 </div>
 
 {/* 将哉立替 */}
-<div style={styles.summaryCardBtn(scope === "shoya")} onClick={() => setScope("shoya")} role="button">
+<div
+style={{
+...styles.summaryCardBtn(scope === "shoya"),
+border: shoyaLate ? "2px solid #dc2626" : (styles.summaryCardBtn(scope === "shoya") as any).border,
+background: shoyaLate ? "#fff5f5" : (styles.summaryCardBtn(scope === "shoya") as any).background,
+}}
+onClick={() => setScope("shoya")}
+role="button"
+>
 <div style={styles.summaryTitle}>将哉立替</div>
 <div style={styles.summaryValue}>{fmtYen(shoyaPaid)}</div>
 <div style={styles.summarySubValue}>（ {fmtYen(shoyaEntertainment)}）</div>
@@ -2520,7 +2600,15 @@ onClick={forceReload}
 </div>
 
 {/* 未有立替 */}
-<div style={styles.summaryCardBtn(scope === "miu")} onClick={() => setScope("miu")} role="button">
+<div
+style={{
+...styles.summaryCardBtn(scope === "miu"),
+border: miuLate ? "2px solid #dc2626" : (styles.summaryCardBtn(scope === "miu") as any).border,
+background: miuLate ? "#fff5f5" : (styles.summaryCardBtn(scope === "miu") as any).background,
+}}
+onClick={() => setScope("miu")}
+role="button"
+>
 <div style={styles.summaryTitle}>未有立替</div>
 <div style={{ ...styles.summaryValue, color: miuColor }}>{fmtYen(miuPaid)}</div>
 <div style={styles.summarySubValue}>（ {fmtYen(miuEntertainment)}）</div>
@@ -3959,9 +4047,9 @@ strokeWidth="2"
 <path d={fLine.path} fill="none" stroke="#f97316" strokeWidth="2.5" strokeDasharray="10 6" />
 <text
 x={fLine.end.x - 6}
-y={fLine.end.y - 10}
+y={fLine.end.y - 18}
 textAnchor="end"
-fontSize="11"
+fontSize="18"
 fill={forecastBudgetText.color}
 fontWeight="900"
 >

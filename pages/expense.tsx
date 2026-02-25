@@ -1,5 +1,6 @@
 // pages/expense.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import {
 addDoc,
 collection,
@@ -187,6 +188,7 @@ return (CATEGORIES as readonly string[]).includes(x);
 type HeaderKey = "date" | "amount" | "category" | "subCategory" | "source" | null;
 
 export default function ExpensePage() {
+const router = useRouter();
 // responsive
 const [wide, setWide] = useState(false);
 useEffect(() => {
@@ -333,6 +335,18 @@ useEffect(() => {
 load(month);
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [month]);
+
+useEffect(() => {
+if (!router.isReady) return;
+if (router.query?.openAdd === "1") {
+openNew();
+
+// ✅ 戻る/リロードで毎回開かないようにクエリを消す（重要）
+router.replace("/expense", undefined, { shallow: true });
+}
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [router.isReady, router.query?.openAdd]);
+
 
 // filtered rows
 const filteredRows = useMemo(() => {
