@@ -577,7 +577,7 @@ return (
 )}
 <div style={{ ...styles.card, marginTop: 10 }}>
 <div style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
-“誰が・いつ・何をしたか” がすぐ分かる表示にしています（タップで詳細）
+（タップで詳細）
 </div>
 
 <div style={styles.filterGrid}>
