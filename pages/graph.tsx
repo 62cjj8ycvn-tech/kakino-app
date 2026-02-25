@@ -630,13 +630,22 @@ return Array.from(m.entries()).map(([subCategory, actual]) => ({ subCategory, ac
 function daysSinceYMD(ymd: string) {
 // ymd: "YYYY-MM-DD"
 if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return Infinity;
-const [y, m, d] = ymd.split("-").map(Number);
-const dt = new Date(y, (m || 1) - 1, d || 1);
+
+const parts = String(ymd).split("-");
+const y = Number(parts[0]);
+const m = Number(parts[1]);
+const d = Number(parts[2]);
+
+// 不正値の保険（NaN なら Infinity 扱い）
+if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return Infinity;
+
+const dt = new Date(y, m - 1, d);
 const today = new Date();
 const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 const diffMs = t0.getTime() - dt.getTime();
 return Math.floor(diffMs / (1000 * 60 * 60 * 24));
 }
+
 
 function latestDateOf(list: ExpenseDoc[]) {
 // date文字列の最大を返す（YYYY-MM-DD なので文字比較でOK）
