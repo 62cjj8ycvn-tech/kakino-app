@@ -344,6 +344,8 @@ const [drillDetailOpen, setDrillDetailOpen] = useState(false);
 // expenses in drill range (client-filtered)
 const [drillExpenses, setDrillExpenses] = useState<ExpenseDoc[]>([]);
 const [drillExpensesLoading, setDrillExpensesLoading] = useState(false);
+const [totalSavingsAllTime, setTotalSavingsAllTime] = useState<number>(0);
+const [totalSavingsLoading, setTotalSavingsLoading] = useState<boolean>(false);
 
 // responsive
 const [wide, setWide] = useState(false);
@@ -396,6 +398,40 @@ setLoading(false);
 
 useEffect(() => {
 loadGoals();
+}, []);
+
+useEffect(() => {
+let alive = true;
+
+(async () => {
+setTotalSavingsLoading(true);
+try {
+// Firestoreのクエリ制限を避けるため、いったんexpenses全件を取得してクライアントで合算
+// （件数が増えたら「category + month」などで月別取得に最適化する）
+const snap = await getDocs(collection(db, "expenses"));
+const sum = snap.docs.reduce((acc, d) => {
+const raw = d.data() as any;
+const category = String(raw.category ?? "");
+if (category !== "積立") return acc;
+const amount = Number(raw.amount ?? 0);
+return acc + (Number.isFinite(amount) ? amount : 0);
+}, 0);
+
+if (!alive) return;
+setTotalSavingsAllTime(sum);
+} catch (e) {
+console.error(e);
+if (!alive) return;
+setTotalSavingsAllTime(0);
+} finally {
+if (!alive) return;
+setTotalSavingsLoading(false);
+}
+})();
+
+return () => {
+alive = false;
+};
 }, []);
 
 // =====================
@@ -1189,15 +1225,19 @@ return (
 <div style={styles.headerRow}>
 <div>
 <div style={styles.title}>貯金目標</div>
-<div style={styles.subTitle}>「積立」合計金額：{fmtYen(totalSavedAcrossGoals)}</div>
+<div style={styles.subTitle}>
+「積立」合計金額：
+{totalSavingsLoading ? " 読み込み中…" : ` ${fmtYen(totalSavingsAllTime)}`}
+</div>
+
 </div>
 
 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
 <button style={styles.pillBtn} onClick={() => router.push("/expense")}>
-＋支出登録へ
+＋支出
 </button>
 <button style={styles.primaryBtn} onClick={openAddGoal}>
-＋ 目標を追加
+＋ 追加
 </button>
 </div>
 </div>
