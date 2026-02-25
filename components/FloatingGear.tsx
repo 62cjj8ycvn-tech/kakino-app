@@ -44,6 +44,7 @@ const items = useMemo<Item[]>(
 { href: "/income", label: "収入" },
 { href: "/savings", label: "貯金" },
 { href: "/budget", label: "予算" },
+{ href: "/goals", label: "積立" },
 { href: "/expense-bulk", label: "固定費一括登録" },
 { href: "/missing-check", label: "漏れチェック" },
 { href: "/export-expense", label: "CSV出力（支出）" },
@@ -59,7 +60,7 @@ const items = useMemo<Item[]>(
 
 // グルーピング（上：主要6、下：残り）
 const primaryHrefs = useMemo(
-() => new Set(["/expense", "/graph", "/todo", "/income", "/savings", "/budget"]),
+() => new Set(["/expense", "/graph", "/todo", "/income", "/savings", "/budget", "goals"]),
 []
 );
 
