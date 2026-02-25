@@ -1,6 +1,7 @@
 // pages/graph.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import { writeAuditLog } from "../lib/audit";
 import {
 collection,
 doc,
@@ -8,6 +9,8 @@ getDoc,
 getDocs,
 query,
 where,
+orderBy,
+limit,
 updateDoc,
 deleteDoc,
 serverTimestamp,
@@ -86,6 +89,16 @@ registrant: string;
 date: string;
 amount: number;
 source: string;
+};
+
+type AuditLogDoc = {
+id: string;
+ts?: any; // Firestore Timestamp
+action?: string; // "create" | "update" | "delete" など
+page?: string; // "expense" | "graph" など（あれば）
+message?: string;
+user?: string; // だれが操作したか（あれば）
+targetId?: string; // 操作対象のdocId（あれば）
 };
 
 type BudgetDoc = {
@@ -314,6 +327,10 @@ router.push(openAdd ? "/expense?openAdd=1" : "/expense");
 // responsive
 const [wide, setWide] = useState(false);
 useEffect(() => {
+writeAuditLog("page_view", "/graph");
+}, []);
+
+useEffect(() => {
 const on = () => setWide(window.innerWidth >= 768);
 on();
 window.addEventListener("resize", on);
@@ -347,6 +364,75 @@ const [scope, setScope] = useState<Scope>("total");
 const [rowsMonth, setRowsMonth] = useState<ExpenseDoc[]>([]);
 const [incomesMonth, setIncomesMonth] = useState<IncomeDoc[]>([]);
 const [loading, setLoading] = useState(true);
+// ===== 操作ログ（auditLogs）表示 =====
+const [logOpen, setLogOpen] = useState(false);
+const [logLoading, setLogLoading] = useState(false);
+const [logs, setLogs] = useState<AuditLogDoc[]>([]);
+const LOG_LIMIT = 300;
+
+function tsToText(ts: any) {
+if (!ts) return "";
+const d =
+typeof ts?.toDate === "function"
+? ts.toDate()
+: ts instanceof Date
+? ts
+: null;
+if (!d) return "";
+const y = d.getFullYear();
+const m = String(d.getMonth() + 1).padStart(2, "0");
+const day = String(d.getDate()).padStart(2, "0");
+const hh = String(d.getHours()).padStart(2, "0");
+const mm = String(d.getMinutes()).padStart(2, "0");
+const ss = String(d.getSeconds()).padStart(2, "0");
+return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
+}
+
+useEffect(() => {
+if (!logOpen) return;
+
+let alive = true;
+(async () => {
+try {
+setLogLoading(true);
+
+// 最新300件（必要なら where("page","==","graph") を足せる）
+const qLog = query(
+collection(db, "auditLogs"),
+orderBy("ts", "desc"),
+limit(LOG_LIMIT)
+);
+
+const snap = await getDocs(qLog);
+const rows: AuditLogDoc[] = snap.docs.map((d) => {
+const raw = d.data() as any;
+return {
+id: d.id,
+ts: raw.ts ?? null,
+action: raw.action ?? "",
+page: raw.page ?? "",
+message: raw.message ?? "",
+user: raw.user ?? "",
+targetId: raw.targetId ?? "",
+};
+});
+
+if (!alive) return;
+setLogs(rows);
+} catch (e) {
+console.error(e);
+if (!alive) return;
+setLogs([]);
+} finally {
+if (!alive) return;
+setLogLoading(false);
+}
+})();
+
+return () => {
+alive = false;
+};
+}, [logOpen]);
 // ====== 日付/期間に応じた対象month配列 ======
 const monthsActive = useMemo(() => {
 return rangeMode ? monthsBetween(rangeStart, rangeEnd) : [month];

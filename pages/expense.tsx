@@ -1,3 +1,5 @@
+import { writeAuditLog } from "../lib/audit";
+
 // pages/expense.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
@@ -304,7 +306,11 @@ return ["", ...withoutFree, FREE_LABEL];
 const load = async (targetMonth: string) => {
 setLoading(true);
 try {
-const qExp = query(collection(db, "expenses"), where("month", "==", targetMonth));
+const qExp = query(
+collection(db, "expenses"),
+where("householdId", "==", "default"),
+where("month", "==", targetMonth)
+);
 const snap = await getDocs(qExp);
 const list: ExpenseDoc[] = snap.docs
 .map((d) => {
@@ -335,6 +341,10 @@ useEffect(() => {
 load(month);
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [month]);
+
+useEffect(() => {
+writeAuditLog("page_view", "/expense");
+}, []);
 
 useEffect(() => {
 if (!router.isReady) return;
@@ -431,6 +441,7 @@ const fetchLatestDateFor = async (name: string) => {
 try {
 const q = query(
 collection(db, "expenses"),
+where("householdId", "==", "default"),
 where("registrant", "==", name)
 );
 const snap = await getDocs(q);
@@ -561,6 +572,7 @@ return;
 }
 
 const body = {
+householdId: "default",
 registrant,
 date,
 month: toMonth(date),
@@ -574,39 +586,81 @@ updatedAt: serverTimestamp(),
 
 try {
 if (editingId) {
+// ===== 更新 =====
 await updateDoc(doc(db, "expenses", editingId), body as any);
+
+await writeAuditLog(
+"update",
+"/expense",
+"expenses",
+editingId,
+body
+);
+
 setLastTouchedId(editingId);
 } else {
+// ===== 新規 =====
 const ref = await addDoc(collection(db, "expenses"), {
 ...body,
 createdAt: serverTimestamp(),
-updatedAt: serverTimestamp(), // ← ★追加
 } as any);
+
+await writeAuditLog(
+"create",
+"/expense",
+"expenses",
+ref.id,
+body
+);
+
 setLastTouchedId(ref.id);
 }
 
 setOpen(false);
-
-// ✅最終登録日カード更新（要求：登録都度判定）
 await refreshLastDates();
-
-// ✅リスト再読込
 await load(month);
-
-// ✅登録者は保持、他はクリア（ただしモーダルは閉じるので次回openNewでクリア）
-// ここでは何もしない（registrant stateは保持されてる）
 } catch (e) {
 console.error(e);
 alert("保存に失敗しました。");
 }
 };
-
 const onDelete = async () => {
 if (!editingId) return;
 const ok = confirm("この明細を削除しますか？");
 if (!ok) return;
+
 try {
+// ✅ 削除前に「消す対象の中身」を拾う（rowsにあるので最優先で使う）
+const target =
+rows.find((x) => x.id === editingId) ||
+filteredRows.find((x) => x.id === editingId) ||
+null;
+
+// ✅ 先にログ（削除した明細の内容を payload に入れる）
+// ※ writeAuditLog はあなたの実装に合わせて引数を調整してOK
+// (action, page, entity, docId, payload)
+await writeAuditLog(
+"delete",
+"/expense",
+"expenses",
+editingId,
+target
+? {
+registrant: target.registrant ?? "",
+date: target.date ?? "",
+month: target.month ?? "",
+amount: Number(target.amount ?? 0),
+category: target.category ?? "",
+subCategory: target.subCategory ?? "",
+source: target.source ?? "",
+memo: target.memo ?? "",
+}
+: { note: "deleted but target not found in local rows" }
+);
+
+// ✅ 本体削除
 await deleteDoc(doc(db, "expenses", editingId));
+
 setOpen(false);
 
 if (lastTouchedIdRef.current === editingId) setLastTouchedId(null);
@@ -618,6 +672,7 @@ console.error(e);
 alert("削除に失敗しました。");
 }
 };
+
 
 // amount input handlers
 const onChangeAmount = (v: string) => {

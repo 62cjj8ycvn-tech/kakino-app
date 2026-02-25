@@ -4,10 +4,12 @@ import {
 doc,
 getDoc,
 setDoc,
+deleteDoc,
 serverTimestamp,
 writeBatch,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { writeAuditLog } from "../lib/audit";
 import { CATEGORIES, SUBCATEGORIES } from "../lib/masterData";
 
 /**
@@ -185,6 +187,9 @@ type EditTarget =
 | { kind: "sub"; category: string; subCategory: string };
 
 export default function BudgetPage() {
+useEffect(() => {
+writeAuditLog("page_view", "/budget");
+}, []);
 // responsive
 const [wide, setWide] = useState(false);
 useEffect(() => {
@@ -417,6 +422,20 @@ batch.set(ref, patch, { merge: true });
 }
 
 await batch.commit();
+// ✅ ログ（一括反映）
+await writeAuditLog(
+"update",
+"/budget",
+"budgets",
+`${months[0]}~${months[months.length - 1]}__${registrant}`,
+{
+mode: rangeMode ? "range" : "single",
+months,
+registrant,
+changedCount: resolved.length,
+changedKeys: resolved.map((x) => x.key),
+}
+);
 alert("一括反映OK！");
 setBulkOpen(false);
 await reloadBudgets();
@@ -541,8 +560,70 @@ if (!prev) patch.createdAt = serverTimestamp();
 
 await setDoc(ref, patch, { merge: true });
 
+await setDoc(ref, patch, { merge: true });
+
+// ✅ ログ（支出ページと同じ形式）
+await writeAuditLog(
+prev ? "update" : "create",
+"/budget",
+"budgets",
+id,
+{
+month: editYM,
+registrant,
+target: editTarget.kind,
+// どのキーを更新したか（ログページで見て分かる用）
+key:
+editTarget.kind === "income"
+? editTarget.key
+: editTarget.kind === "category"
+? editTarget.category
+: `${editTarget.category}/${editTarget.subCategory}`,
+value: Math.round(val),
+// 参考：保存後の状態も持たせる（任意だけど便利）
+incomePlans: nextIncome,
+categoryBudgets: nextCat,
+subBudgets: nextSub,
+}
+);
+
 setEditOpen(false);
 await reloadBudgets();
+};
+
+const onDelete = async () => {
+const id = budgetDocId(editYM, registrant);
+const ok = confirm(`この月（${editYM}）の予算を削除しますか？`);
+if (!ok) return;
+
+try {
+// ✅ 削除前に「消す対象」を payload に入れる
+const prevDoc = budgetDocs?.[editYM] ?? null;
+
+await writeAuditLog(
+"delete",
+"/budget",
+"budgets",
+id,
+prevDoc
+? {
+month: editYM,
+registrant,
+incomePlans: prevDoc.incomePlans ?? {},
+categoryBudgets: prevDoc.categoryBudgets ?? {},
+subBudgets: prevDoc.subBudgets ?? {},
+}
+: { note: "deleted but target not found in local budgetDocs" }
+);
+
+await deleteDoc(doc(db, "budgets", id));
+
+setEditOpen(false);
+await reloadBudgets();
+} catch (e) {
+console.error(e);
+alert("削除に失敗した：コンソール見て！");
+}
 };
 // ---------- styles ----------
 const styles = useMemo(() => {
@@ -1187,6 +1268,9 @@ style={{ ...styles.input, textAlign: "right" }}
 />
 
 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+<button style={styles.dangerBtn} onClick={onDelete}>
+削除
+</button>
 <button style={styles.tinyBtn} onClick={saveEdit}>
 保存
 </button>
