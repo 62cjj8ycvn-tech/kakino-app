@@ -471,7 +471,13 @@ if (!cur || ms > cur.ms) out[email][a] = { ms, ts: r.ts };
 // 表示順を安定（メール昇順）
 const sortedEmails = Object.keys(out).sort();
 const sorted: typeof out = {};
-for (const e of sortedEmails) sorted[e] = out[e];
+
+for (const e of sortedEmails) {
+// ✅ out[e] が undefined 扱いになるのを潰す（キーは sortedEmails 由来なので実際はある）
+const v = out[e];
+if (v) sorted[e] = v;
+}
+
 return sorted;
 }, [rows]);
 
