@@ -112,18 +112,18 @@ subBudgets?: Record<string, Record<string, number>>;
 const ALL_REG = "(全員)";
 
 const CATEGORY_COLORS: Record<string, string> = {
-食費: "#1e88e5",
-光熱費: "#43a047",
-消耗品: "#fb8c00",
-車: "#8e24aa",
-娯楽費: "#e53935",
-会社: "#546e7a",
-子供: "#f06292",
-医療費: "#00acc1",
-固定費: "#3949ab",
-その他: "#757575",
-積立: "#2e7d32",
-振替: "#6d4c41",
+食費: "#3A7BD5",
+光熱費: "#3A7BD5",
+消耗品: "#3A7BD5",
+車: "#3A7BD5",
+娯楽費: "#3A7BD5",
+会社: "#3A7BD5",
+子供: "#3A7BD5",
+医療費: "#3A7BD5",
+固定費: "#3A7BD5",
+その他: "#3A7BD5",
+積立: "#3A7BD5",
+振替: "#3A7BD5",
 };
 
 function colorOfCategory(cat: string) {
