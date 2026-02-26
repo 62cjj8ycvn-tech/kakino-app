@@ -829,6 +829,7 @@ miuEntBudget,
 miuEntertainment,
 ]);
 
+const shoyaColor = shoyaPaid < 0 ? "#dc2626" : "#0f172a";
 const miuColor = miuPaid < 0 ? "#dc2626" : "#0f172a";
 
 // ====== category aggregate（scope実績に合わせる） ======
@@ -2686,7 +2687,7 @@ onClick={() => setScope("shoya")}
 role="button"
 >
 <div style={styles.summaryTitle}>将哉立替</div>
-<div style={styles.summaryValue}>{fmtYen(shoyaPaid)}</div>
+<div style={{ ...styles.summaryValue, color: shoyaColor }}>{fmtYen(shoyaPaid)}</div>
 <div style={styles.summarySubValue}>（ {fmtYen(shoyaEntertainment)}）</div>
 {/* ✅ 娯楽費 予算差 */}
 <div style={{ ...styles.summarySubValue, color: shoyaEntDiffInfo.color }}>
